@@ -1,4 +1,13 @@
-use crate::{prelude::Real, utils::Sample};
+use crate::{
+    prelude::{EpiModel, Real},
+    sim::Population,
+    utils::{Sample, Table},
+};
+use std::{
+    fmt::{Debug, Display},
+    ops::Add,
+};
+
 pub type DynTracker<T> = Box<dyn Tracker<T>>;
 pub type TrackerList<T> = Vec<(usize, DynTracker<T>)>;
 
@@ -173,5 +182,16 @@ where
 {
     fn track_mut(&mut self, value: &mut T) {
         (&mut self.0)(value)
+    }
+}
+
+impl<'a, P, T> Tracker<P> for Table<T>
+where
+    P: Population,
+    P::State: EpiModel,
+    T: From<u8> + Display + Add<Output = T> + Copy + Debug + Default,
+{
+    fn track(&mut self, value: &P) {
+        self.count_epidemic_compartments(value, true);
     }
 }

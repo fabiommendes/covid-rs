@@ -19,6 +19,27 @@ pub trait EpiModel: Sized + Clone {
     const CARDINALITY: usize;
     const CSV_HEADER: &'static str;
 
+    /// Return the vector of column names for each compartment
+    fn column_names() -> Vec<String> {
+        let columns = Self::CSV_HEADER.split(',').map(|s| s.to_string()).collect();
+        return columns;
+    }
+
+    /// Return the vector of column names for each compartment
+    fn column_names_short() -> Vec<String> {
+        let columns = Self::CSV_HEADER
+            .split(',')
+            .map(|s| {
+                if let Some(c) = s.chars().nth(0) {
+                    c.to_uppercase().to_string()
+                } else {
+                    "".to_string()
+                }
+            })
+            .collect();
+        return columns;
+    }
+
     /// Index of the susceptible state.
     const S: usize;
 

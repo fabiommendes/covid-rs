@@ -1,9 +1,5 @@
-use super::{
-    table_tracker::TableTracker,
-    tracker::{Tracker, TrackerList},
-};
-use crate::prelude::EpiModel;
-use crate::sim::Population;
+use super::tracker::{Tracker, TrackerList};
+use crate::{prelude::EpiModel, sim::Population, utils::Table};
 use getset::{CopyGetters, Getters};
 use std::fmt::Debug;
 
@@ -14,7 +10,7 @@ pub struct EpiTracker<P> {
     #[getset(get_copy = "pub")]
     n_iter: usize,
     #[getset(get = "pub")]
-    epicurves: TableTracker<usize>,
+    epicurves: Table<usize>,
     #[getset(get = "pub")]
     reporters: TrackerList<P>,
 }
@@ -28,15 +24,15 @@ impl<P> EpiTracker<P> {
         let mut new = EpiTracker {
             n_iter: 0,
             reporters: vec![],
-            epicurves: TableTracker::new(P::State::CARDINALITY),
+            epicurves: Table::new(P::State::column_names_short()),
         };
-        new.epicurves.update(population, true);
+        new.epicurves.count_epidemic_compartments(population, true);
         return new;
     }
 
     /// Return a CSV string with the content of the Epicurves.
-    pub fn render_epicurve_csv(&self, head: &str) -> String {
-        self.epicurves.render_csv(head, ',')
+    pub fn render_epicurve_csv(&self) -> String {
+        self.epicurves.render_csv(',')
     }
 
     /// Return an array with the last row of epicurves.

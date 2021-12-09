@@ -238,7 +238,7 @@ fn run_simulation(sim: &mut SeicharSimulation, config: &Config) -> Fallible<()> 
 
 fn save_simulation_results(sim: &SeicharSimulation, config: &Config) -> Fallible<()> {
     // Write output
-    let csv_data = sim.render_epicurve_csv("S,E,I,C,H,A,R,D");
+    let csv_data = sim.render_epicurve_csv();
     config.write_ouptut("epicurve.csv", &csv_data)?;
 
     println!("\nNUMBER OF INFECTIONS");

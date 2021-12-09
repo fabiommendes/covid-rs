@@ -1,6 +1,7 @@
-use super::{population::Population, state::RandomUpdate, EpiEvent, EventDispatcher, HasEpiModel};
+use super::{population::Population, state::RandomUpdate, HasEpiModel};
 use crate::{
     epidemic::*,
+    events::{EpidemicSimulationMsg, EventDispatcher},
     params::{EpiParamsFull, EpiParamsLocalT, FromLocalParams, LocalBind},
     prelude::*,
     trackers::{EpiTracker, Tracker},
@@ -27,8 +28,9 @@ pub struct Simulation<ST, P, SP> {
     sampler: SP,
 
     rng: RefCell<SmallRng>,
-    dispatcher: EventDispatcher<EpiEvent>,
+    dispatcher: EventDispatcher<EpidemicSimulationMsg>,
     reporter: EpiTracker<Vec<ST>>,
+    time: Time,
 }
 
 impl<'a, ST, P, SP> Simulation<ST, P, SP>
@@ -46,6 +48,7 @@ where
             params: RefCell::new(params),
             dispatcher: EventDispatcher::new_with_default_listeners(),
             rng: RefCell::new(SmallRng::from_entropy()),
+            time: 0,
             sampler,
         }
     }
@@ -63,6 +66,7 @@ where
             sampler: self.sampler.clone(),
             reporter: self.reporter.copy(),
             rng: self.rng.clone(),
+            time: self.time,
             dispatcher: EventDispatcher::new_with_default_listeners(),
         }
     }
@@ -187,6 +191,7 @@ where
         let mut cases = 0;
         for _ in 0..n_steps {
             // Default updates
+            self.time += 1;
             self.update_agents();
             cases += self.update_pairs();
             self.reporter.track(&self.population);
@@ -220,12 +225,14 @@ where
 
                 if !rng.gen_bool(params.local().prob_protect()) && dest.contaminate_from(src) {
                     cases += 1;
-                    self.dispatcher.trigger(&EpiEvent::NewInfection(i, j));
+                    self.dispatcher
+                        .trigger(&EpidemicSimulationMsg::NewInfection(i, j));
                 }
             }
         }
 
-        self.dispatcher.trigger(&EpiEvent::EndStep(cases));
+        self.dispatcher
+            .trigger(&EpidemicSimulationMsg::EndStep(self.time, cases));
 
         return cases;
     }
@@ -277,18 +284,17 @@ where
     }
 
     /// Render the epicurve for the current simulation
-    pub fn render_epicurve_csv(&self, head: &str) -> String {
-        let mut head = head.to_string();
+    pub fn render_epicurve_csv(&self) -> String {
         let mut infections = vec![0];
         if let Some(counts) = self.dispatcher.infection_counts() {
             infections.extend(counts.iter());
         }
-        head.push_str(",cases");
         return self
             .reporter
             .epicurves()
-            .with_column(infections.iter().cloned(), true)
-            .render_csv(&head, ',');
+            .clone()
+            .add_column("cases", infections.iter().cloned(), true)
+            .render_csv( ',');
     }
 
     /// Used internally to normalize (or not) results

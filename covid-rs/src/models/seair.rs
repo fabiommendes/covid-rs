@@ -43,7 +43,7 @@ impl<C> Default for SEAIR<C> {
 
 impl<C: Clone> EpiModel for SEAIR<C> {
     const CARDINALITY: usize = 6;
-    const CSV_HEADER: &'static str = "S,E,A,I,R,D";
+    const CSV_HEADER: &'static str = "susceptible,exposed,asymptomatic,infectious,recovered,dead";
     const S: usize = 0;
     const D: usize = 5;
 
