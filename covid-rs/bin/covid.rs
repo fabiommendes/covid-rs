@@ -100,12 +100,19 @@ fn main() -> Fallible<()> {
         .get_matches();
 
     // Read configuration
-    let config_path = matches.value_of("config").unwrap_or("settings.toml");
-    log::debug!("config path: {}", config_path);
+    let (config_path, has_config) = if let Some(path) = matches.value_of("config") {
+        (path, true)
+    } else {
+        ("settings.toml", false)
+    };
 
-    let config_data = fs::read_to_string(config_path)
-        .map_err(|_| format!("config file '{}' not found!", config_path))?;
-    let mut config: Config = toml::from_str(&config_data)?;
+    let mut config: Config = if let Ok(data) = fs::read_to_string(config_path) {
+        toml::from_str(&data)?
+    } else if has_config {
+        Err(format!("config file '{}' not found!", config_path))?
+    } else {
+        Config::default()
+    };
 
     update_configuration(&matches, &mut config, config_path)?;
     config.create_output_folder()?;
@@ -148,7 +155,6 @@ fn update_configuration(
     if let Some(seed) = matches.value_of("seed") {
         config.set_seed(seed);
     }
-
 
     // Preparing parameters ///////////////////////////////////////////////////
 
