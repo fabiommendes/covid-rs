@@ -44,7 +44,7 @@ where
             reporter: EpiTracker::new(&population),
             population,
             params: RefCell::new(params),
-            dispatcher: EventDispatcher::new(),
+            dispatcher: EventDispatcher::new_with_default_listeners(),
             rng: RefCell::new(SmallRng::from_entropy()),
             sampler,
         }
@@ -63,7 +63,7 @@ where
             sampler: self.sampler.clone(),
             reporter: self.reporter.copy(),
             rng: self.rng.clone(),
-            dispatcher: EventDispatcher::new(),
+            dispatcher: EventDispatcher::new_with_default_listeners(),
         }
     }
 
@@ -280,12 +280,14 @@ where
     pub fn render_epicurve_csv(&self, head: &str) -> String {
         let mut head = head.to_string();
         let mut infections = vec![0];
-        // infections.extend(self.infections_per_iter.iter());
+        if let Some(counts) = self.dispatcher.infection_counts() {
+            infections.extend(counts.iter());
+        }
         head.push_str(",cases");
         return self
             .reporter
             .epicurves()
-            // .with_column(infections.iter().cloned(), true)
+            .with_column(infections.iter().cloned(), true)
             .render_csv(&head, ',');
     }
 

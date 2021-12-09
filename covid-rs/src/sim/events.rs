@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use super::Id;
 
 /** EVENTS *******************************************************************/
@@ -9,7 +11,7 @@ pub trait Event {
     fn id(&self) -> usize;
 
     /// Maximum id for all events
-    fn length() -> usize;
+    const EVENT_TYPES_COUNT: usize;
 }
 
 /// Event
@@ -20,17 +22,21 @@ pub enum EpiEvent {
     NewInfection(Id, Id),
 }
 
+impl EpiEvent {
+    const START_STEP_ID: usize = 0;
+    const END_STEP_ID: usize = 1;
+    const NEW_INFECTION_ID: usize = 2;
+}
+
 impl Event for EpiEvent {
+    const EVENT_TYPES_COUNT: usize = 3;
+
     fn id(&self) -> usize {
         match self {
-            Self::StartStep => 0,
-            Self::EndStep(_) => 1,
-            Self::NewInfection(_, _) => 2,
+            Self::StartStep => Self::START_STEP_ID,
+            Self::EndStep(_) => Self::END_STEP_ID,
+            Self::NewInfection(_, _) => Self::NEW_INFECTION_ID,
         }
-    }
-
-    fn length() -> usize {
-        return 3;
     }
 }
 
@@ -63,11 +69,11 @@ where
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct InfectionTraceHandler {
-    pairs: Vec<(Id, Id)>,
+pub struct InfectionPairsTracker {
+    data: Vec<(Id, Id)>,
 }
 
-impl InfectionTraceHandler {
+impl InfectionPairsTracker {
     /// Create new handler
     pub fn new() -> Self {
         Self::default()
@@ -75,14 +81,26 @@ impl InfectionTraceHandler {
 
     /// Count infections for the given id
     pub fn count_new_infections_by(&self, id: Id) -> usize {
-        self.pairs.iter().filter(|(a, _)| id == *a).count()
+        self.data.iter().filter(|(a, _)| id == *a).count()
+    }
+
+    /// Expose a slice with all infection pairs
+    pub fn infection_pairs(&self) -> &[(Id, Id)] {
+        return &self.data;
+    }
+
+    /// Push new infection from agent a to agent b.
+    /// 
+    /// Agents are tracked by id.
+    pub fn add(&mut self, a: Id, b: Id) {
+        self.data.push((a, b));
     }
 }
 
-impl EventHandler<EpiEvent> for InfectionTraceHandler {
+impl EventHandler<EpiEvent> for InfectionPairsTracker {
     fn handle(&mut self, event: &EpiEvent) {
         if let &EpiEvent::NewInfection(a, b) = event {
-            self.pairs.push((a, b))
+            self.data.push((a, b))
         }
     }
 
@@ -99,21 +117,26 @@ impl EventHandler<EpiEvent> for InfectionTraceHandler {
 ///
 /// Listen to the EndStep(num_infections) event
 #[derive(Debug, Clone, Default)]
-pub struct EpiTracker {
-    infections: Vec<usize>,
+pub struct InfectionsPerStepTracker {
+    data: Vec<usize>,
 }
 
-impl EpiTracker {
+impl InfectionsPerStepTracker {
     /// Create new handler
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Expose a slice with all infection counts
+    pub fn infection_counts(&self) -> &[usize] {
+        return &self.data;
+    }
 }
 
-impl EventHandler<EpiEvent> for EpiTracker {
+impl EventHandler<EpiEvent> for InfectionsPerStepTracker {
     fn handle(&mut self, event: &EpiEvent) {
         if let &EpiEvent::EndStep(n) = event {
-            self.infections.push(n)
+            self.data.push(n)
         }
     }
 
@@ -140,8 +163,8 @@ where
 {
     /// Create a new event dispatcher
     pub fn new() -> Self {
-        let mut events = Vec::with_capacity(E::length());
-        for _ in 0..E::length() {
+        let mut events = Vec::with_capacity(E::EVENT_TYPES_COUNT);
+        for _ in 0..E::EVENT_TYPES_COUNT {
             events.push(Vec::new());
         }
         return EventDispatcher { listeners: events };
@@ -158,5 +181,37 @@ where
     pub fn register(&mut self, handler: Box<dyn EventHandler<E>>) {
         let id = handler.handle_id();
         self.listeners[id].push(handler);
+    }
+}
+
+impl EventDispatcher<EpiEvent> {
+    /// Initialize the default EpiEvent listeners.
+    pub fn new_with_default_listeners() -> Self {
+        let mut new = Self::new();
+        new.register(Box::new(InfectionPairsTracker::new()));
+        new.register(Box::new(InfectionsPerStepTracker::new()));
+        return new;
+    }
+
+    /// Return a slice with all detected infection pairs
+    pub fn infection_pairs(&self) -> Option<&[(Id, Id)]> {
+        let id = EpiEvent::NewInfection(0, 0).id();
+        for h in &self.listeners[id] {
+            if let Some(h) = <dyn Any>::downcast_ref::<InfectionPairsTracker>(h) {
+                return Some(h.infection_pairs());
+            }
+        }
+        return None;
+    }
+
+    /// Return a slice with the infection for each step so far.  
+    pub fn infection_counts(&self) -> Option<&[usize]> {
+        let id = EpiEvent::EndStep(0).id();
+        for h in &self.listeners[id] {
+            if let Some(h) = <dyn Any>::downcast_ref::<InfectionsPerStepTracker>(h) {
+                return Some(h.infection_counts());
+            }
+        }
+        return None;
     }
 }
