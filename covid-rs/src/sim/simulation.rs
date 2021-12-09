@@ -1,4 +1,4 @@
-use super::{population::Population, state::RandomUpdate, HasEpiModel};
+use super::{population::Population, state::RandomUpdate, EpiEvent, EventDispatcher, HasEpiModel};
 use crate::{
     epidemic::*,
     params::{EpiParamsFull, EpiParamsLocalT, FromLocalParams, LocalBind},
@@ -19,20 +19,15 @@ use std::{cell::RefCell, fmt::Debug};
 pub struct Simulation<ST, P, SP> {
     #[getset(get = "pub", get_mut = "pub")]
     population: Vec<ST>,
-    
+
     #[getset(get = "pub", get_mut = "pub")]
     params: RefCell<P>,
 
     #[getset(get = "pub", get_mut = "pub")]
     sampler: SP,
-    
-    rng: RefCell<SmallRng>,
 
-    #[getset(get = "pub")]
-    infections_per_agent: Vec<u16>,
-    #[getset(get = "pub")]
-    infections_per_iter: Vec<usize>,
-    
+    rng: RefCell<SmallRng>,
+    dispatcher: EventDispatcher<EpiEvent>,
     reporter: EpiTracker<Vec<ST>>,
 }
 
@@ -47,12 +42,11 @@ where
     pub fn new(params: P, population: Vec<ST>, sampler: SP) -> Self {
         Simulation {
             reporter: EpiTracker::new(&population),
-            infections_per_agent: vec![0].repeat(population.len()),
-            infections_per_iter: vec![],
             population,
             params: RefCell::new(params),
-            sampler,
+            dispatcher: EventDispatcher::new(),
             rng: RefCell::new(SmallRng::from_entropy()),
+            sampler,
         }
     }
 
@@ -65,12 +59,11 @@ where
     {
         Simulation {
             population: self.population.clone(),
-            infections_per_agent: self.infections_per_agent.clone(),
-            infections_per_iter: self.infections_per_iter.clone(),
             params: self.params.clone(),
             sampler: self.sampler.clone(),
             reporter: self.reporter.copy(),
             rng: self.rng.clone(),
+            dispatcher: EventDispatcher::new(),
         }
     }
 
@@ -227,11 +220,12 @@ where
 
                 if !rng.gen_bool(params.local().prob_protect()) && dest.contaminate_from(src) {
                     cases += 1;
-                    self.infections_per_agent[i] += 1;
+                    self.dispatcher.trigger(&EpiEvent::NewInfection(i, j));
                 }
             }
         }
-        self.infections_per_iter.push(cases);
+
+        self.dispatcher.trigger(&EpiEvent::EndStep(cases));
 
         return cases;
     }
@@ -286,12 +280,12 @@ where
     pub fn render_epicurve_csv(&self, head: &str) -> String {
         let mut head = head.to_string();
         let mut infections = vec![0];
-        infections.extend(self.infections_per_iter.iter());
+        // infections.extend(self.infections_per_iter.iter());
         head.push_str(",cases");
         return self
             .reporter
             .epicurves()
-            .with_column(infections.iter().cloned(), true)
+            // .with_column(infections.iter().cloned(), true)
             .render_csv(&head, ',');
     }
 

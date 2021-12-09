@@ -9,7 +9,7 @@ pub trait Event {
     fn id(&self) -> usize;
 
     /// Maximum id for all events
-    fn max_id() -> usize;
+    fn length() -> usize;
 }
 
 /// Event
@@ -29,25 +29,25 @@ impl Event for EpiEvent {
         }
     }
 
-    fn max_id() -> usize {
-        return 2;
+    fn length() -> usize {
+        return 3;
     }
 }
 
 /** EVENT HANDLERS ***********************************************************/
 
-/// The EventHandler<E, Ctx> trait describes an object that can process some
+/// The EventHandler<E> trait describes an object that can process some
 /// event of type E (usually an enum type) in a given context Ctx (usually a
 /// simulation object).
 ///
 /// Event handlers are useful to collect statistics, and generate reports.
-pub trait EventHandler<E, Ctx>
+pub trait EventHandler<E>
 where
     E: Event,
 {
     /// Handle event in the given context. Usually, the context is a reference
     /// to a simulation object. The event handler cannot affect the context.
-    fn handle(&mut self, event: &E, ctx: &Ctx);
+    fn handle(&mut self, event: &E);
 
     /// In order to make dispatch more efficient, event handlers are registered
     /// to separate lanes depend on event type. This usually corresponds to a
@@ -79,8 +79,8 @@ impl InfectionTraceHandler {
     }
 }
 
-impl<Ctx> EventHandler<EpiEvent, Ctx> for InfectionTraceHandler {
-    fn handle(&mut self, event: &EpiEvent, _: &Ctx) {
+impl EventHandler<EpiEvent> for InfectionTraceHandler {
+    fn handle(&mut self, event: &EpiEvent) {
         if let &EpiEvent::NewInfection(a, b) = event {
             self.pairs.push((a, b))
         }
@@ -110,8 +110,8 @@ impl EpiTracker {
     }
 }
 
-impl<Ctx> EventHandler<EpiEvent, Ctx> for EpiTracker {
-    fn handle(&mut self, event: &EpiEvent, _: &Ctx) {
+impl EventHandler<EpiEvent> for EpiTracker {
+    fn handle(&mut self, event: &EpiEvent) {
         if let &EpiEvent::EndStep(n) = event {
             self.infections.push(n)
         }
@@ -127,35 +127,35 @@ impl<Ctx> EventHandler<EpiEvent, Ctx> for EpiTracker {
 }
 
 /** EVENT DISPATCHER *********************************************************/
-pub struct EventDispatcher<E, Ctx>
+pub struct EventDispatcher<E>
 where
     E: Event,
 {
-    listeners: Vec<Vec<Box<dyn EventHandler<E, Ctx>>>>,
+    listeners: Vec<Vec<Box<dyn EventHandler<E>>>>,
 }
 
-impl<E, Ctx> EventDispatcher<E, Ctx>
+impl<E> EventDispatcher<E>
 where
     E: Event,
 {
     /// Create a new event dispatcher
     pub fn new() -> Self {
-        let mut events = Vec::with_capacity(E::max_id());
-        for _ in 0..E::max_id() {
+        let mut events = Vec::with_capacity(E::length());
+        for _ in 0..E::length() {
             events.push(Vec::new());
         }
         return EventDispatcher { listeners: events };
     }
 
     /// Trigger all handlers for the given event.
-    pub fn trigger_event(&mut self, event: E, ctx: Ctx) {
+    pub fn trigger(&mut self, event: &E) {
         for ev in &mut self.listeners[event.id()] {
-            ev.handle(&event, &ctx)
+            ev.handle(event)
         }
     }
 
     /// Register event handler
-    pub fn register_handler(&mut self, handler: Box<dyn EventHandler<E, Ctx>>) {
+    pub fn register(&mut self, handler: Box<dyn EventHandler<E>>) {
         let id = handler.handle_id();
         self.listeners[id].push(handler);
     }
