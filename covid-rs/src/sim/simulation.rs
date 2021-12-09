@@ -4,7 +4,7 @@ use crate::{
     events::{EpidemicSimulationMsg, EventDispatcher},
     params::{EpiParamsFull, EpiParamsLocalT, FromLocalParams, LocalBind},
     prelude::*,
-    trackers::{EpiTracker, Tracker},
+    utils::Table,
 };
 use getset::{Getters, MutGetters};
 use log::{debug, trace};
@@ -29,7 +29,7 @@ pub struct Simulation<ST, P, SP> {
 
     rng: RefCell<SmallRng>,
     dispatcher: EventDispatcher<EpidemicSimulationMsg>,
-    reporter: EpiTracker<Vec<ST>>,
+    epicurves: Option<Table<usize>>,
     time: Time,
 }
 
@@ -43,7 +43,7 @@ where
     /// Create new simulation from population and sampler.
     pub fn new(params: P, population: Vec<ST>, sampler: SP) -> Self {
         Simulation {
-            reporter: EpiTracker::new(&population),
+            epicurves: Some(Table::new(ST::column_names())),
             population,
             params: RefCell::new(params),
             dispatcher: EventDispatcher::new_with_default_listeners(),
@@ -53,8 +53,7 @@ where
         }
     }
 
-    /// Return a copy of simulation ignoring local reporters and update
-    /// functions
+    /// Return a copy of simulation.
     pub fn copy(&self) -> Self
     where
         P: Clone,
@@ -64,7 +63,7 @@ where
             population: self.population.clone(),
             params: self.params.clone(),
             sampler: self.sampler.clone(),
-            reporter: self.reporter.copy(),
+            epicurves: self.epicurves.clone(),
             rng: self.rng.clone(),
             time: self.time,
             dispatcher: EventDispatcher::new_with_default_listeners(),
@@ -194,7 +193,11 @@ where
             self.time += 1;
             self.update_agents();
             cases += self.update_pairs();
-            self.reporter.track(&self.population);
+
+            let population = &self.population;
+            if let Some(table) = self.epicurves.as_mut() {
+                table.count_epidemic_compartments(population, true);
+            }
         }
 
         return cases;
@@ -255,31 +258,30 @@ where
     /// Return the tip of the epicurve
     pub fn epistate(&self, normalize: bool) -> Vec<Real> {
         let factor = self._normalization_factor(normalize);
-        self.reporter
-            .tip()
-            .iter()
-            .map(|a| *a as Real * factor)
-            .collect()
+        if let Some(table) = self.epicurves.as_ref() {
+            return table.tip().iter().map(|a| *a as Real * factor).collect();
+        } else {
+            return vec![0.0; ST::CARDINALITY];
+        }
     }
 
     /// Return curve for the n-th component of epicurve.
     ///
     /// If normalized, results are divided by population size.
     pub fn get_epicurve(&self, n: usize, normalize: bool) -> Option<Vec<Real>> {
-        self.reporter.col(n).map(|data| {
-            let mut vec = Vec::with_capacity(data.len());
-            let factor = self._normalization_factor(normalize);
-            for x in data {
-                vec.push(x as Real * factor);
-            }
-            return vec;
-        })
+        let data = self.epicurves.as_ref()?.col(n)?;
+        let mut vec = Vec::with_capacity(data.len());
+        let factor = self._normalization_factor(normalize);
+        for x in data {
+            vec.push(x as Real * factor);
+        }
+        return Some(vec);
     }
 
     /// Get epistate at a given iteration
     pub fn get_epistate(&self, n: usize, normalize: bool) -> Option<Vec<Real>> {
         let factor = self._normalization_factor(normalize);
-        let row = self.reporter.row(n)?;
+        let row = self.epicurves.as_ref()?.row(n)?;
         return Some(row.iter().map(|x| *x as Real * factor).collect());
     }
 
@@ -289,12 +291,15 @@ where
         if let Some(counts) = self.dispatcher.infection_counts() {
             infections.extend(counts.iter());
         }
-        return self
-            .reporter
-            .epicurves()
-            .clone()
-            .add_column("cases", infections.iter().cloned(), true)
-            .render_csv( ',');
+
+        if let Some(table) = &self.epicurves {
+            return table
+                .clone()
+                .add_column("cases", infections.iter().cloned(), true)
+                .render_csv(',');
+        } else {
+            return "".to_string();
+        }
     }
 
     /// Used internally to normalize (or not) results

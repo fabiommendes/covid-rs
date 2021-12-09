@@ -1,7 +1,7 @@
 use crate::{
     prelude::{EpiModel, Real},
     sim::Population,
-    utils::{Sample, Table},
+    utils::{Sampler, Table},
 };
 use std::{
     fmt::{Debug, Display},
@@ -157,9 +157,9 @@ sampling_tracker!(Vec<Real>);
 /////////////////////////////////////////////////////////////////////////////
 
 /// Target wrapper for IntoTracker on Sampling types
-pub struct SamplingTracker<T: Sample>(T);
+pub struct SamplingTracker<T: Sampler>(T);
 
-impl<S: Sample> Tracker<Real> for SamplingTracker<S> {
+impl<S: Sampler> Tracker<Real> for SamplingTracker<S> {
     fn track(&mut self, value: &Real) {
         self.0.observe(*value)
     }

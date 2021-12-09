@@ -1,14 +1,17 @@
 use crate::prelude::{Real, INF, NAN};
 use serde::{Deserialize, Serialize};
 
-/// A trait for some data structure that holds statistics about an streaming 
+/// A trait for some data structure that holds statistics about an streaming
 /// scalar variable.
 ///
 /// The full information would be contained in a vector of Reals. This
 /// trait admits alternative representations that keeps track only of the
-/// most relevant information and avoid storing the entire dataset in memory 
+/// most relevant information and avoid storing the entire dataset in memory
 /// when that is not necessary.
-pub trait Sample {
+pub trait Sampler {
+    /// Create an empty sampler
+    fn empty() -> Self;
+
     /// Register a single observation to sample
     fn observe(&mut self, x: Real) {
         self.observe_repeated(x, 1);
@@ -96,7 +99,11 @@ pub trait Sample {
     }
 }
 
-impl Sample for Vec<Real> {
+impl Sampler for Vec<Real> {
+    fn empty() -> Self {
+        return vec![];
+    }
+
     fn observe_repeated(&mut self, x: Real, n: usize) {
         for _ in 0..n {
             self.push(x);
@@ -134,7 +141,10 @@ impl Sample for Vec<Real> {
     }
 }
 
-impl Sample for Vec<(Real, usize)> {
+impl Sampler for Vec<(Real, usize)> {
+    fn empty() -> Self {
+        return vec![];
+    }
     fn observe_repeated(&mut self, x: Real, n: usize) {
         if let Some(pair) = self.last_mut() {
             if pair.0 == x {
@@ -184,7 +194,10 @@ pub struct MeanAcc {
     m1: Real,
 }
 
-impl Sample for MeanAcc {
+impl Sampler for MeanAcc {
+    fn empty() -> Self {
+        return MeanAcc { m0: 0.0, m1: 0.0 };
+    }
     fn observe_repeated(&mut self, x: Real, n: usize) {
         self.m0 += n as Real;
         self.m1 += (n as Real) * x;
@@ -220,7 +233,14 @@ pub struct StdAcc {
     m2: Real,
 }
 
-impl Sample for StdAcc {
+impl Sampler for StdAcc {
+    fn empty() -> Self {
+        return StdAcc {
+            m0: 0.0,
+            m1: 0.0,
+            m2: 0.0,
+        };
+    }
     fn observe_repeated(&mut self, x: Real, n: usize) {
         let n = n as Real;
         self.m0 += n;
@@ -260,7 +280,16 @@ pub struct KurtAcc {
     m4: Real,
 }
 
-impl Sample for KurtAcc {
+impl Sampler for KurtAcc {
+    fn empty() -> Self {
+        return KurtAcc {
+            m0: 0.0,
+            m1: 0.0,
+            m2: 0.0,
+            m3: 0.0,
+            m4: 0.0,
+        };
+    }
     fn observe_repeated(&mut self, x: Real, n: usize) {
         let n = n as Real;
         self.m0 += n;
@@ -306,7 +335,7 @@ pub struct MinMaxAcc<S> {
     last: Real,
 }
 
-impl<S: Sample + Default> MinMaxAcc<S> {
+impl<S: Sampler + Default> MinMaxAcc<S> {
     /// Create new empty Point Stats accumulator
     pub fn new() -> Self {
         Self::default()
@@ -345,7 +374,15 @@ impl<S: Sample + Default> MinMaxAcc<S> {
     // }
 }
 
-impl<S: Sample> Sample for MinMaxAcc<S> {
+impl<S: Sampler> Sampler for MinMaxAcc<S> {
+    fn empty() -> Self {
+        return MinMaxAcc {
+            acc: S::empty(),
+            min: Real::INFINITY,
+            max: Real::NEG_INFINITY,
+            last: Real::NAN
+        };
+    }
     fn observe_repeated(&mut self, x: Real, n: usize) {
         self.acc.observe_repeated(x, n);
         self.min = Real::min(x, self.min);

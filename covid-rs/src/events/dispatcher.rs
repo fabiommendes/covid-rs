@@ -1,7 +1,11 @@
 use super::{
     EpidemicSimulationMsg, EventHandler, InfectionPairsTracker, InfectionsPerStepTracker, Msg,
+    StepDurationTracker,
 };
-use crate::sim::Id;
+use crate::{
+    sim::Id,
+    utils::{Accumulator, Sampler},
+};
 use std::any::Any;
 
 pub struct EventDispatcher<E>
@@ -42,8 +46,11 @@ impl EventDispatcher<EpidemicSimulationMsg> {
     /// Initialize the default EpiEvent listeners.
     pub fn new_with_default_listeners() -> Self {
         let mut new = Self::new();
+        let sampler = Accumulator::empty();
+
         new.register(Box::new(InfectionPairsTracker::new()));
         new.register(Box::new(InfectionsPerStepTracker::new()));
+        new.register(Box::new(StepDurationTracker::new_from_sampler(sampler)));
         return new;
     }
 
