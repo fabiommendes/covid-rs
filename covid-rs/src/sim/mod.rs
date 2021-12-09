@@ -1,9 +1,11 @@
 mod simulation;
 mod population;
 mod state;
+mod events;
 pub use simulation::*;
 pub use population::*;
 pub use state::*;
+pub use events::*;
 
 /// Type alias describing agent handles.
 pub type Id = usize;

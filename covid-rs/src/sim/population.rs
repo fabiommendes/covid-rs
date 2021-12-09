@@ -1,4 +1,4 @@
-use super::{DeterministicUpdate, HasAge, Id, RandomUpdate, World};
+use super::{HasAge, Id, RandomUpdate, World};
 use crate::prelude::{Age, AgeDistribution10};
 use crate::{prelude::AgeCount10, utils::random_ages};
 use rand::prelude::Rng;
@@ -219,15 +219,6 @@ pub trait Population {
         <Self as Population>::State: RandomUpdate<W>,
     {
         self.each_agent_mut(&mut |_, st: &mut Self::State| st.random_update(world, rng));
-    }
-
-    /// Apply deterministic_update to each element of population
-    fn deterministic_update<W>(&mut self, world: &W)
-    where
-        W: World,
-        <Self as Population>::State: DeterministicUpdate<W>,
-    {
-        self.each_agent_mut(|_, st: &mut Self::State| st.deterministic_update(world));
     }
 
     /// Set ages of all agents acording to distribution.

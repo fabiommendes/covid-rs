@@ -16,33 +16,35 @@ use std::{cell::RefCell, fmt::Debug};
 /// Simulation stores a population of agents and some objects responsible for
 /// controlling the dynamics of those Agents.
 #[derive(Getters, MutGetters)]
-pub struct Simulation<W, S, PS> {
+pub struct Simulation<ST, P, SP> {
     #[getset(get = "pub", get_mut = "pub")]
-    population: Vec<S>,
+    population: Vec<ST>,
+    
+    #[getset(get = "pub", get_mut = "pub")]
+    params: RefCell<P>,
+
+    #[getset(get = "pub", get_mut = "pub")]
+    sampler: SP,
+    
+    rng: RefCell<SmallRng>,
+
     #[getset(get = "pub")]
     infections_per_agent: Vec<u16>,
     #[getset(get = "pub")]
     infections_per_iter: Vec<usize>,
-    #[getset(get = "pub", get_mut = "pub")]
-    params: RefCell<W>,
-
-    #[getset(get = "pub", get_mut = "pub")]
-    sampler: PS,
-    reporter: EpiTracker<Vec<S>>,
-    world_update: Vec<Box<dyn FnMut(&mut W, &Vec<S>)>>,
-    population_update: Vec<Box<dyn FnMut(&W, &mut Vec<S>)>>,
-    rng: RefCell<SmallRng>,
+    
+    reporter: EpiTracker<Vec<ST>>,
 }
 
-impl<'a, W, S, PS> Simulation<W, S, PS>
+impl<'a, ST, P, SP> Simulation<ST, P, SP>
 where
-    PS: PopulationSampler<Vec<S>>,
-    W: LocalBind<S>,
-    W::Local: EpiParamsLocalT,
-    S: EpiModel + RandomUpdate<W::Local> + Debug,
+    P: LocalBind<ST>,
+    P::Local: EpiParamsLocalT,
+    ST: EpiModel + RandomUpdate<P::Local> + Debug,
+    SP: PopulationSampler<Vec<ST>>,
 {
     /// Create new simulation from population and sampler.
-    pub fn new(params: W, population: Vec<S>, sampler: PS) -> Self {
+    pub fn new(params: P, population: Vec<ST>, sampler: SP) -> Self {
         Simulation {
             reporter: EpiTracker::new(&population),
             infections_per_agent: vec![0].repeat(population.len()),
@@ -50,8 +52,6 @@ where
             population,
             params: RefCell::new(params),
             sampler,
-            world_update: vec![],
-            population_update: vec![],
             rng: RefCell::new(SmallRng::from_entropy()),
         }
     }
@@ -60,8 +60,8 @@ where
     /// functions
     pub fn copy(&self) -> Self
     where
-        W: Clone,
-        PS: Clone,
+        P: Clone,
+        SP: Clone,
     {
         Simulation {
             population: self.population.clone(),
@@ -70,8 +70,6 @@ where
             params: self.params.clone(),
             sampler: self.sampler.clone(),
             reporter: self.reporter.copy(),
-            world_update: vec![],
-            population_update: vec![],
             rng: self.rng.clone(),
         }
     }
@@ -109,8 +107,8 @@ where
     /// If only_susceptible is true, only contaminate susceptible individuals.
     pub fn contaminate_at_random(&mut self, n: usize, only_susceptible: bool) -> &mut Self
     where
-        S: HasEpiModel,
-        S::Clinical: Default,
+        ST: HasEpiModel,
+        ST::Clinical: Default,
     {
         self.with_state(|rng, _, pop| {
             pop.contaminate_at_random(n, only_susceptible, rng);
@@ -126,7 +124,7 @@ where
     /// curve.
     pub fn calibrate_sampler_from_cases(&mut self, cases: &[Real]) -> &mut Self
     where
-        S::Clinical: Default,
+        ST::Clinical: Default,
     {
         // TODO: create calibrator struct
         let alpha = 0.5;
@@ -198,15 +196,6 @@ where
             // Default updates
             self.update_agents();
             cases += self.update_pairs();
-
-            // Arbitrary updates
-            let mut params = self.params.borrow_mut();
-            for f in self.population_update.iter_mut() {
-                f(&params, &mut self.population);
-            }
-            for f in self.world_update.iter_mut() {
-                f(&mut params, &self.population);
-            }
             self.reporter.track(&self.population);
         }
 
@@ -248,7 +237,7 @@ where
     }
 
     /// Return a sample of n agents
-    pub fn sample(&self, n: usize) -> Vec<S> {
+    pub fn sample(&self, n: usize) -> Vec<ST> {
         let rng = &mut *self.rng.borrow_mut();
         let mut sample = Vec::with_capacity(n);
         for (_, ag) in self.population.randoms(n, rng) {
@@ -320,8 +309,8 @@ where
     /// Return Some(FullSEIRParams<f64>) if agent exists.
     pub fn get_local_epiparams(&self, i: usize) -> Option<EpiParamsFull<f64>>
     where
-        S: EpiModel,
-        W::Local: EpiParamsLocalT,
+        ST: EpiModel,
+        P::Local: EpiParamsLocalT,
     {
         let ag = self.population.get(i)?;
         let mut params = self.params.borrow_mut();
@@ -330,29 +319,32 @@ where
     }
 
     /// Work with mutable references to the internal RNG and population.
-    pub fn with_rng_population<R>(&mut self, f: impl FnOnce(&mut SmallRng, &mut Vec<S>) -> R) -> R {
+    pub fn with_rng_population<R>(
+        &mut self,
+        f: impl FnOnce(&mut SmallRng, &mut Vec<ST>) -> R,
+    ) -> R {
         let rng = &mut *self.rng.borrow_mut();
         f(rng, &mut self.population)
     }
 
     /// Work with a mutable reference to the internal RNG, parameters and population.
-    pub fn with_state<R>(&mut self, f: impl FnOnce(&mut SmallRng, &mut W, &mut Vec<S>) -> R) -> R {
+    pub fn with_state<R>(&mut self, f: impl FnOnce(&mut SmallRng, &mut P, &mut Vec<ST>) -> R) -> R {
         let rng = &mut *self.rng.borrow_mut();
         let params = &mut *self.params.borrow_mut();
         return f(rng, params, &mut self.population);
     }
 }
 
-impl<W, S> Simulation<W, S, SimpleSampler>
+impl<P, ST> Simulation<ST, P, SimpleSampler>
 where
-    W: LocalBind<S>,
-    S: RandomUpdate<W::Local> + EpiModel + Debug,
-    W::Local: EpiParamsLocalT,
+    P: LocalBind<ST>,
+    ST: RandomUpdate<P::Local> + EpiModel + Debug,
+    P::Local: EpiParamsLocalT,
 {
     /// Create a new simulation from a simple sampler
     pub fn new_simple(
-        params: W,
-        population: Vec<S>,
+        params: P,
+        population: Vec<ST>,
         n_contacts: Real,
         prob_infection: Real,
     ) -> Self {

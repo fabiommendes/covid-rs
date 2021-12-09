@@ -20,7 +20,7 @@ type Params = EpiParamsFull<AgeParam>;
 pub type SeicharAgent = SimpleAgent<SEICHAR<()>, VaccineParams>;
 pub type WorldParams = BindVaccine<EpiParamsCached<EpiParamsFull<AgeParam>, AgeParam>>;
 pub type Sampler = SimpleSampler;
-pub type SeicharSimulation = Simulation<WorldParams, SeicharAgent, Sampler>;
+pub type SeicharSimulation = Simulation<SeicharAgent, WorldParams, Sampler>;
 
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 #[serde(default)]
@@ -262,7 +262,7 @@ impl Config {
         let params: EpiParamsBindVaccine<AgeParam> =
             self.params.unwrap_or_default().cached().into();
         let mut sim: Simulation<_, _, _> = Simulation::new(params, population, sampler);
-        
+
         if let Some(seed) = &self.seed {
             sim.seed_from_string(seed);
         }

@@ -83,12 +83,6 @@ pub trait HasEpiModel {
     }
 }
 
-/// A trait for objects that can be deterministically updated in the given
-/// World.
-pub trait DeterministicUpdate<W> {
-    fn deterministic_update(&mut self, world: &W);
-}
-
 /// A trait for objects that can be stochastically updated in the given
 /// World. Users must pass a random number generator in order to update
 // this object
@@ -101,10 +95,6 @@ pub trait RandomUpdate<W> {
 /////////////////////////////////////////////////////////////////////////////
 
 impl State for () {}
-
-impl<W> DeterministicUpdate<W> for () {
-    fn deterministic_update(&mut self, _world: &W) {}
-}
 
 impl<W> RandomUpdate<W> for () {
     fn random_update<R: Rng>(&mut self, _world: &W, _: &mut R) {}
