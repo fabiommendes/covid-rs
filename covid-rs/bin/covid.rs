@@ -215,7 +215,7 @@ fn update_configuration(
 
 fn initialize_simulation(sim: &mut SeicharSimulation, config: &Config) -> Fallible<()> {
     // apply vaccines
-    sim.with_state(|rng, _, pop| {
+    sim.with_state_args(|rng, _, pop| {
         config
             .vaccine_plan()
             .vaccinate_population(pop, Default::default(), rng)
