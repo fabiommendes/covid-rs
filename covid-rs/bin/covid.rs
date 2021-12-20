@@ -215,10 +215,12 @@ fn update_configuration(
 
 fn initialize_simulation(sim: &mut SeicharSimulation, config: &Config) -> Fallible<()> {
     // apply vaccines
-    sim.with_state_args(|rng, _, pop| {
-        config
-            .vaccine_plan()
-            .vaccinate_population(pop, Default::default(), rng)
+    sim.with_state_mut(|st| {
+        config.vaccine_plan().vaccinate_population(
+            &mut st.population,
+            Default::default(),
+            &mut st.rng,
+        )
     });
 
     // infect seed

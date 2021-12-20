@@ -11,12 +11,16 @@ use crate::{
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Default, Getters, CopyGetters)]
 pub struct SimpleAgent<M, V> {
     age: Age,
+
     #[getset(get = "pub")]
     epimodel: M,
+
     #[getset(get_copy = "pub")]
     epimodel_t: Time,
+
     #[getset(get = "pub")]
     vaccine: Option<V>,
+
     #[getset(get_copy = "pub")]
     vaccine_t: Time,
 }

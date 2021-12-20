@@ -2,48 +2,93 @@ use super::{population::Population, state::RandomUpdate, HasEpiModel};
 use crate::{
     epidemic::*,
     events::{EpidemicSimulationMsg, EventDispatcher},
-    params::{EpiParamsFull, EpiParamsLocalT, FromLocalParams, LocalBind},
+    // params::{EpiParamsFull, EpiParams, FromLocalParams, LocalBind},
+    params::{EpiParams, ParamSet},
     prelude::*,
     scheduler::Scheduler,
     utils::Table,
 };
 use getset::{Getters, MutGetters};
-use log::{debug, trace};
+use log;
 use rand::{
     prelude::{SeedableRng, SmallRng},
     Rng,
 };
-use std::{cell::RefCell, fmt::Debug};
+use std::fmt::Debug;
 
+/// Simulation state
 #[derive(Debug, Clone)]
-pub struct State<ST> {
+pub struct State<P, ST> {
     pub time: Time,
     pub population: Vec<ST>,
-    // pub params: P,
-    pub rng: RefCell<SmallRng>,
+    pub params: P,
+    pub rng: SmallRng,
+}
+
+impl<P, ST> State<P, ST>
+where
+    P: ParamSet<ST>,
+    ST: RandomUpdate<P::BoundParams> + EpiModel + Clone,
+    P::BoundParams: EpiParams,
+{
+    /// Advance a single simulation step.
+    ///
+    /// Infection pairs are produced by the sampler object.
+    ///
+    /// The callback function `cb` is executed for every new infection pair.
+    pub fn step<S, F>(&mut self, sampler: &S, cb: F) -> usize
+    where
+        S: PopulationSampler<Vec<ST>>,
+        F: FnMut(usize, usize),
+    {
+        self.time += 1;
+
+        // Natural evolution of each agent.
+        for obj in &mut self.population {
+            obj.random_update(&self.params.bind(obj), &mut self.rng);
+        }
+
+        // Simulate agent interactions, allowing new infections to occur.
+        let mut cases = 0usize;
+        let mut on_infection = cb;
+
+        for (i, j) in sampler.sample_infection_pairs(&self.population, &mut self.rng) {
+            if i == j {
+                continue;
+            }
+            if let Some((src, dest)) = self.population.get_pair_mut(i, j) {
+                if !self.rng.gen_bool(self.params.bind(src).prob_protect())
+                    && dest.contaminate_from(src)
+                {
+                    cases += 1;
+                    on_infection(i, j);
+                }
+            }
+        }
+        return cases;
+    }
 }
 
 /// Simulation stores a population of agents and some objects responsible for
 /// controlling the dynamics of those Agents.
 #[derive(Getters, MutGetters)]
 pub struct Simulation<ST, P, SP> {
-    state: State<ST>,
+    state: State<P, ST>,
 
-    #[getset(get = "pub", get_mut = "pub")]
-    params: RefCell<P>,
-
+    // #[getset(get = "pub", get_mut = "pub")]
+    // params: P,
     #[getset(get = "pub", get_mut = "pub")]
     sampler: SP,
     dispatcher: EventDispatcher<EpidemicSimulationMsg>,
-    scheduler: Scheduler<State<ST>>,
+    scheduler: Scheduler<State<P, ST>>,
     epicurves: Option<Table<usize>>,
 }
 
 impl<'a, ST, P, SP> Simulation<ST, P, SP>
 where
-    P: LocalBind<ST>,
-    P::Local: EpiParamsLocalT,
-    ST: EpiModel + RandomUpdate<P::Local> + Debug,
+    P: ParamSet<ST>,
+    P::BoundParams: EpiParams,
+    ST: EpiModel + RandomUpdate<P::BoundParams> + Debug,
     SP: PopulationSampler<Vec<ST>>,
 {
     /// Create new simulation from population and sampler.
@@ -53,9 +98,9 @@ where
             state: State {
                 population,
                 time: 0,
-                rng: RefCell::new(SmallRng::from_entropy()),
+                params: params,
+                rng: SmallRng::from_entropy(),
             },
-            params: RefCell::new(params),
             dispatcher: EventDispatcher::new_with_default_listeners(),
             scheduler: Scheduler::new(),
             sampler,
@@ -85,7 +130,7 @@ where
     {
         Simulation {
             state: self.state.clone(),
-            params: self.params.clone(),
+            // params: self.params.clone(),
             sampler: self.sampler.clone(),
             epicurves: self.epicurves.clone(),
             scheduler: self.scheduler.clone(),
@@ -97,7 +142,7 @@ where
 
     /// Set seed for random number generator
     pub fn seed_from_u64(&mut self, seed: u64) -> &mut Self {
-        self.state.rng.replace(SmallRng::seed_from_u64(seed));
+        self.state.rng = SmallRng::seed_from_u64(seed);
         return self;
     }
 
@@ -111,13 +156,19 @@ where
             dest[i] += src[i];
         }
 
-        self.state.rng.replace(SmallRng::from_seed(seed));
+        self.state.rng = SmallRng::from_seed(seed);
         return self;
     }
 
     /// Set seed for random number generator
     pub fn seed_from(&mut self, rng: &SmallRng) -> &mut Self {
-        self.state.rng.replace(rng.clone());
+        self.state.rng = rng.clone();
+        return self;
+    }
+
+    /// Increment the RNG. Useful to avoid repeated runs for methods that do not affect the RNG.
+    pub fn rng_next(&mut self) -> &mut Self {
+        self.state.rng.gen_bool(0.5);
         return self;
     }
 
@@ -129,12 +180,13 @@ where
         ST: HasEpiModel,
         ST::Clinical: Default,
     {
-        self.with_state_args(|rng, _, pop| {
+        self.with_parts(|pop, _, rng| {
             pop.contaminate_at_random(n, only_susceptible, rng);
         });
         return self;
     }
 
+    /*
     /// Initialize simulation and calibrate sampler from a curve of cases.
     ///
     /// This is a somewhat simplistic view on model calibration. We just run
@@ -186,11 +238,9 @@ where
             // artificial infections to quickstart an infection
             if excess > 0.25 * (acc_target + alpha) {
                 let n = (excess * 0.25) as usize;
-                self.state.population.contaminate_at_random(
-                    n,
-                    true,
-                    &mut *self.state.rng.borrow_mut(),
-                );
+                self.state
+                    .population
+                    .contaminate_at_random(n, true, &mut self.state.rng);
                 acc_cases += n as Real;
                 excess = acc_target - acc_cases as Real;
             }
@@ -201,11 +251,12 @@ where
         debug!(target: "calibrate_sample_cases", "final contacts: {}, {} iterations", c_mean, n_iter);
         return self;
     }
+    */
 
     /// Like steps, but return Self, rather then the number of cases. This is
     /// useful to use in builder-like APIs.
     #[inline]
-    pub fn run(&mut self, n_steps: usize) -> &mut Self {
+    pub fn run(&'a mut self, n_steps: usize) -> &'a mut Self {
         self.steps(n_steps);
         return self;
     }
@@ -214,52 +265,48 @@ where
 
     /// Run simulation for the given number of steps and return the number of
     /// new cases.
-    pub fn steps(&mut self, n_steps: usize) -> usize {
+    pub fn steps(&'a mut self, n_steps: usize) -> usize {
         let mut cases = 0;
-
-        let state = &mut self.state;
-        let dispatcher = &mut self.dispatcher;
-        let params = &mut *self.params.borrow_mut();
-
         for _ in 0..n_steps {
-            state.time += 1;
-            {
-                // let state: &mut State<ST, P> = &mut State {
-                //     time: time,
-                //     population: population,
-                //     params: params,
-                //     rng: rng,
-                // };
-                // println!("{}", state.rng.gen_bool(0.5));
-                self.scheduler.before_step(state);
-            }
+            cases += self.step();
+        }
+        return cases;
+    }
 
-            // Main step action
-            update_agents(&mut state.population, params, &mut *state.rng.borrow_mut());
-            cases += update_pairs(
-                &mut state.population,
-                params,
-                &self.sampler,
-                state.time,
-                dispatcher,
-                &mut *state.rng.borrow_mut(),
-            );
+    /// Run a single simulation step;
+    pub fn step(&mut self) -> usize {
+        let mut cases = 0;
+        let start_time = self.state.time;
+        let dispatcher = &mut self.dispatcher;
+        let scheduler = &mut self.scheduler;
+        let sampler = &self.sampler;
+        let state = &mut self.state;
+        let cb = |i, j| dispatcher.trigger(&EpidemicSimulationMsg::NewInfection(i, j));
 
-            if let Some(table) = self.epicurves.as_mut() {
-                table.count_epidemic_compartments(&state.population, true);
-            }
+        log::debug!("running step: {}", start_time + 1);
+        scheduler.before_step(state);
+        cases += state.step(sampler, cb);
+        dispatcher.trigger(&EpidemicSimulationMsg::EndStep(start_time + 1, cases));
+        scheduler.after_step(state);
 
-            // scheduler.after_step(&mut self.population);
+        let population = &state.population;
+        if let Some(table) = self.epicurves.as_mut() {
+            table.count_epidemic_compartments(population, true);
         }
 
         return cases;
     }
 
     /// Return a sample of n agents
+    ///
+    /// This method does not advance the random number generator and thus all samples taken
+    /// in succession will be identical. If this behavior is not desired, execute
+    /// simulation.rng_next() to increment the RNG.
     pub fn sample(&self, n: usize) -> Vec<ST> {
-        let rng = &mut *self.state.rng.borrow_mut();
         let mut sample = Vec::with_capacity(n);
-        for (_, ag) in self.state.population.randoms(n, rng) {
+        let mut rng = self.state.rng.clone();
+
+        for (_, ag) in self.state.population.randoms(n, &mut rng) {
             sample.push(ag.clone());
         }
         return sample;
@@ -326,45 +373,49 @@ where
         }
     }
 
+    /*
     /// Get epidemiological params for given agent
     ///
     /// Return Some(FullSEIRParams<f64>) if agent exists.
-    pub fn get_local_epiparams(&self, i: usize) -> Option<EpiParamsFull<f64>>
+    pub fn get_local_epiparams(&self, i: usize) -> Option<P::LocalParams>
     where
-        ST: EpiModel,
-        P::Local: EpiParamsLocalT,
+    ST: EpiModel,
+    P::LocalParams: EpiParams,
     {
         let ag = self.state.population.get(i)?;
-        let mut params = self.params.borrow_mut();
-        params.bind_to_object(ag);
-        Some(FromLocalParams::from_local_params(params.local()))
+        let params = self.params.local_params(ag);
+        return Some(params);
     }
+    */
 
-    /// Work with mutable references to the internal RNG and population.
-    pub fn with_rng_population<R>(
+    /// Work with mutable references to the internal population, parameters and RNG.
+    pub fn with_parts<R>(
         &mut self,
-        f: impl FnOnce(&mut SmallRng, &mut Vec<ST>) -> R,
+        f: impl FnOnce(&mut Vec<ST>, &mut P, &mut SmallRng) -> R,
     ) -> R {
-        let rng = &mut *self.state.rng.borrow_mut();
-        f(rng, &mut self.state.population)
+        return f(
+            &mut self.state.population,
+            &mut self.state.params,
+            &mut self.state.rng,
+        );
     }
 
     /// Work with a mutable reference to the internal RNG, parameters and population.
-    pub fn with_state_args<R>(
-        &mut self,
-        f: impl FnOnce(&mut SmallRng, &mut P, &mut Vec<ST>) -> R,
-    ) -> R {
-        let rng = &mut *self.state.rng.borrow_mut();
-        let params = &mut *self.params.borrow_mut();
-        return f(rng, params, &mut self.state.population);
+    pub fn with_state_mut<R>(&mut self, f: impl FnOnce(&mut State<P, ST>) -> R) -> R {
+        return f(&mut self.state);
+    }
+
+    /// Work with a mutable reference to the internal RNG, parameters and population.
+    pub fn with_state<R>(&self, f: impl FnOnce(&State<P, ST>) -> R) -> R {
+        return f(&self.state);
     }
 }
 
 impl<'a, P, ST> Simulation<ST, P, SimpleSampler>
 where
-    P: LocalBind<ST>,
-    ST: RandomUpdate<P::Local> + EpiModel + Debug,
-    P::Local: EpiParamsLocalT,
+    P: ParamSet<ST>,
+    ST: RandomUpdate<P::BoundParams> + EpiModel + Debug,
+    P::BoundParams: EpiParams,
 {
     /// Create a new simulation from a simple sampler
     pub fn new_simple(
@@ -397,49 +448,3 @@ where
 //         self.population.as_mut_slice()
 //     }
 // }
-
-/// Self-update agents. Resolve the natural evolution of all agents.
-fn update_agents<ST, P>(population: &mut Vec<ST>, params: &mut P, rng: &mut impl Rng)
-where
-    P: LocalBind<ST>,
-    ST: RandomUpdate<P::Local>,
-{
-    for obj in population {
-        params.bind_to_object(obj);
-        obj.random_update(params.local(), rng);
-    }
-}
-
-/// Simulate agent interactions, allowing new infections to occur.
-fn update_pairs<ST, P, S>(
-    population: &mut Vec<ST>,
-    params: &mut P,
-    sampler: &S,
-    time: Time,
-    dispatcher: &mut EventDispatcher<EpidemicSimulationMsg>,
-    rng: &mut impl Rng,
-) -> usize
-where
-    P: LocalBind<ST>,
-    P::Local: EpiParamsLocalT,
-    S: PopulationSampler<Vec<ST>>,
-    ST: RandomUpdate<P::Local> + EpiModel + Clone,
-{
-    let mut cases = 0usize;
-
-    for (i, j) in sampler.sample_infection_pairs(population, rng) {
-        if i == j {
-            continue;
-        }
-        if let Some((src, dest)) = population.get_pair_mut(i, j) {
-            params.bind_to_object(dest);
-
-            if !rng.gen_bool(params.local().prob_protect()) && dest.contaminate_from(src) {
-                cases += 1;
-                dispatcher.trigger(&EpidemicSimulationMsg::NewInfection(i, j));
-            }
-        }
-    }
-    dispatcher.trigger(&EpidemicSimulationMsg::EndStep(time, cases));
-    return cases;
-}

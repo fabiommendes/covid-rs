@@ -13,14 +13,6 @@ crate-name = "covid"
 # crate-type = ["rlib"]
 
 [[bin]]
-name = "sir"
-path = "bin/sir.rs"
-
-[[bin]]
-name = "sim"
-path = "bin/sim.rs"
-
-[[bin]]
 name = "covid"
 path = "bin/covid.rs"
 
@@ -30,6 +22,7 @@ chrono = {version = "0.4", features = ["serde"]}
 clap = "~2.34.0"
 csv = "1.1"
 getset = {version = "0.1.1"}
+lazy_static = "1.4.0"
 log = {version = "0.4.14", features = ["release_max_level_warn"]}
 ndarray = {version = "0.15.1"}
 paste = "1.0.5"
@@ -37,5 +30,5 @@ rand = {version = "^0.8.3", features = ["small_rng"]}
 rayon = "1.5"
 serde = {version = "1.0", features = ["derive"]}
 simple_logger = "1.11.0"
-toml = "0.5"
 term_size = "0.3.2"
+toml = "0.5"

@@ -2,7 +2,7 @@ use rand::Rng;
 
 use crate::{
     epidemic::{EpiModel, SEICHARLike, SEIRLike},
-    params::EpiParamsLocalT,
+    params::EpiParams,
     prelude::Real,
     sim::RandomUpdate,
 };
@@ -138,7 +138,7 @@ impl<C: Clone> SEICHARLike for SEICHAR<C> {
 
 impl<C: Clone, P> RandomUpdate<P> for SEICHAR<C>
 where
-    P: EpiParamsLocalT,
+    P: EpiParams,
 {
     fn random_update<R: Rng>(&mut self, params: &P, rng: &mut R) {
         match self {

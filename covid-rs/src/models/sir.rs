@@ -1,6 +1,6 @@
 use crate::{
     epidemic::{EpiModel, SEIRLike},
-    params::EpiParamsLocalT,
+    params::EpiParams,
     prelude::Real,
     sim::RandomUpdate,
 };
@@ -109,7 +109,7 @@ impl<C: Clone> SEIRLike for SIR<C> {
 
 impl<C: Clone, P> RandomUpdate<P> for SIR<C>
 where
-    P: EpiParamsLocalT,
+    P: EpiParams,
 {
     fn random_update<R: Rng>(&mut self, params: &P, rng: &mut R) {
         match self {

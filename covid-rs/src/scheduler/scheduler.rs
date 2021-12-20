@@ -218,6 +218,8 @@ impl<Ctx> SimpleScheduler<Ctx> {
         for task in &mut self.always {
             task(ctx);
         }
+
+        self.time += 1;
     }
 }
 
@@ -254,7 +256,7 @@ fn identity<T>(x: T) -> T {
     return x;
 }
 
-fn try_clone<Ctx>(task: &Task<Ctx>) -> Option<Task<Ctx>> {
+fn try_clone<Ctx>(_task: &Task<Ctx>) -> Option<Task<Ctx>> {
     // if let Some(f) = <dyn Any>::downcast_ref::<fn(&mut Ctx)>(task) {
     //     return Some(Box::new(f))
     // }

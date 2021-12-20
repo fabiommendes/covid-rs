@@ -2,23 +2,26 @@ use std::error::Error;
 use std::fs;
 use std::path::Path;
 
-use crate::models::{SimpleAgent, SimpleAgentPopulationExt, SEICHAR};
-use crate::params::{BindVaccine, EpiParamsBindVaccine, EpiParamsCached, VaccineParams};
-use crate::sim::{HasAge, Population, Simulation};
-use crate::utils::default_rng;
-use crate::{params::EpiParamsFull, prelude::*};
+// use crate::params::{BindVaccine, EpiParamsBindVaccine, EpiParamsCached, VaccineParams};
+use crate::{
+    models::{SimpleAgent, SimpleAgentPopulationExt, SEICHAR},
+    params::{EpiParamsData},
+    prelude::*,
+    sim::{HasAge, Population, Simulation},
+    utils::default_rng,
+};
 use chrono::{DateTime, Local};
 use getset::{CopyGetters, Getters, Setters};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-type Params = EpiParamsFull<AgeParam>;
+type Params = EpiParamsData<Real>;
 
 /**
  *  Supported simulation types
  */
-pub type SeicharAgent = SimpleAgent<SEICHAR<()>, VaccineParams>;
-pub type WorldParams = BindVaccine<EpiParamsCached<EpiParamsFull<AgeParam>, AgeParam>>;
+pub type SeicharAgent = SimpleAgent<SEICHAR<()>, ()>;
+pub type WorldParams = EpiParamsData<Real>; //BindVaccine<EpiParamsCached<EpiParamsFull<AgeParam>, AgeParam>>;
 pub type Sampler = SimpleSampler;
 pub type SeicharSimulation = Simulation<SeicharAgent, WorldParams, Sampler>;
 
@@ -259,9 +262,11 @@ impl Config {
         let sampler = self.simple_sampler();
 
         // Initialize simulation
-        let params: EpiParamsBindVaccine<AgeParam> =
-            self.params.unwrap_or_default().cached().into();
+        // let params: EpiParamsMin<Real> = self.params.unwrap_or_default().cached().into();
+        // let params: EpiParamsMin<Real> = self.params.unwrap_or_default().into();
+        let params: EpiParamsData<Real> = EpiParamsData::default_from_scalars();
         let mut sim: Simulation<_, _, _> = Simulation::new(params, population, sampler);
+        println!("{:?}", params);
 
         if let Some(seed) = &self.seed {
             sim.seed_from_string(seed);

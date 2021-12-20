@@ -6,7 +6,7 @@ pub mod models;
 pub mod params;
 pub mod prelude;
 pub mod sampler;
+pub mod scheduler;
 pub mod sim;
 pub mod trackers;
 pub mod utils;
-pub mod scheduler;

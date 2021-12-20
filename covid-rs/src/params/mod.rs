@@ -4,86 +4,41 @@
 //! simulation. We try to provide an interface that is at the same time efficient
 //! (no boxed data or vtables), flexible and easy to use. Those goals are obviously
 //! in conflict and sometimes some sacrifices were necessary.
-mod bind;
+// mod bind;
 mod constants;
-mod epi_local_params;
 mod epi_param_cached;
 mod epi_params;
-mod epi_params_clinical;
-mod epi_params_full;
-mod epi_params_min;
-mod macros;
-mod vaccine_simple;
+mod epi_params_basic;
+mod vaccines;
+// mod vaccine_simple;
 
-pub use bind::*;
+// pub use bind::*;
 pub use constants::*;
-pub use epi_local_params::*;
 pub use epi_param_cached::*;
 pub use epi_params::*;
-pub use epi_params_clinical::*;
-pub use epi_params_full::*;
-pub use epi_params_min::*;
-pub use vaccine_simple::*;
+pub use epi_params_basic::*;
+pub use vaccines::*;
+// pub use vaccine_simple::*;
 
-use crate::{prelude::{Age, AgeParam, ForAge, Real}, sim::HasAge};
+use crate::prelude::{AgeDistribution10, AgeParam, Real};
+use constants as cte;
+
+pub trait ParamSet<ST> {
+    type BoundParams: EpiParams;
+    // type GlobalParams: EpiParams;
+
+    /// Return the local set of parameters bound to the given state.
+    fn bind(&self, st: &ST) -> Self::BoundParams;
+
+    // /// Return an object representing global parameters.
+    // fn global_params(&self) -> Self::GlobalParams;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Basic public traits
 ///////////////////////////////////////////////////////////////////////////////
 
-/// This trait binds global parameters to a local view seen by each agent.
-///
-/// This view can depend on the agent's state or (more typically) on parts of
-/// the agent's state. A typical example is a set of parameters that depend on
-/// age can be bound to some agent's age before passing to its update functions.
-/// The bound parameters would only show values pertinent to the agent's specific
-/// age.
-///
-/// The local bind must also expose a mutable set of world parameters. Those
-/// parameters are exposed as references for efficiency and thus must be owned.
-pub trait LocalBind<S> {
-    type Local;
-    type World;
-    type Bind;
-
-    /// Bind parameters to value
-    fn bind(&mut self, bind: Self::Bind);
-
-    /// Return a copy bound to the given bind state
-    fn local_clone(&self, bind: Self::Bind) -> Self::Local
-    where
-        Self::Local: Clone,
-        Self: Clone,
-    {
-        let mut new = self.clone();
-        new.bind(bind);
-        return new.local().clone();
-    }
-
-    /// Return local parameters for current bind
-    fn local(&self) -> &Self::Local;
-
-    /// Return a reference to the world parameters
-    fn world(&self) -> &Self::World;
-
-    /// Return a mutable reference to the world parameters
-    fn world_mut(&mut self) -> &mut Self::World;
-
-    /// Just a convenience function that extract bind data and then binds
-    fn bind_to_object(&mut self, _: &S);
-
-    /// Return a copy bound to the given bind state
-    fn clone_to_object(&self, obj: &S) -> Self::Local
-    where
-        Self::Local: Clone,
-        Self: Clone,
-    {
-        let mut new = self.clone();
-        new.bind_to_object(obj);
-        return new.local().clone();
-    }
-}
-
+/*
 /// A trait that maps Self with the expected output of a ParamSet after receiving
 /// some bind value B as argument.
 ///
@@ -102,8 +57,8 @@ pub trait ForBind<B> {
 
 impl<T, S> ForBind<S> for T
 where
-    T: ForAge,
-    S: HasAge,
+T: ForAge,
+S: HasAge,
 {
     type Output = T::Output;
 
@@ -121,6 +76,7 @@ impl<T: ForAge<Output = Real>> ForBind<Age> for T {
         self.for_age(*age)
     }
 }
+*/
 
 /// A trait related to ForState, which allows transformation of the inner data
 /// by some mapping in the expected elements.
@@ -179,10 +135,11 @@ impl MultiComponent for AgeParam {
     }
 }
 
+/*
 /// Trait for types that can be created from a EpiLocalParams implementation
 pub trait FromLocalParams {
     /// Create new instances from an UniversalSEIRParams implementation
-    fn from_local_params(params: &impl EpiParamsLocalT) -> Self;
+    fn from_local_params(params: &impl EpiParams) -> Self;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -192,7 +149,7 @@ pub trait FromLocalParams {
 /// The recommended type to hold epidemiological params.
 pub type EpiParamsGlobal<T> = EpiParamsCached<EpiParamsFull<T>, T>;
 
-/// A type that is usable as an universal global param set. 
+/// A type that is usable as an universal global param set.
 pub type EpiParamsLocal = EpiParamsGlobal<Real>;
 
 /// A type alias for vaccine-dependent models
@@ -201,3 +158,25 @@ pub type EpiParamsBindVaccine<T> = BindVaccine<EpiParamsGlobal<T>>;
 /// A type alias for bound age-dependent SEIR params that implements the
 /// LocalBind trait.
 pub type EpiParamsBindAge<T> = Bind<EpiParamsGlobal<T>, Age>;
+*/
+
+/// The most simple param
+pub fn simple_params() -> EpiParamsCached<Real> {
+    return EpiParamsCached::new(EpiParamsData::default_from_scalars());
+}
+
+/// The most simple param
+pub fn age_dependent_params() -> EpiParamsCached<AgeDistribution10> {
+    let base = EpiParamsData {
+        incubation_period: cte::INCUBATION_PERIOD_DISTRIBUTION,
+        infectious_period: cte::INFECTIOUS_PERIOD_DISTRIBUTION,
+        asymptomatic_infectiousness: cte::ASYMPTOMATIC_INFECTIOUSNESS_DISTRIBUTION,
+        prob_asymptomatic: cte::PROB_ASYMPTOMATIC_DISTRIBUTION,
+        case_fatality_ratio: cte::CASE_FATALITY_RATIO_DISTRIBUTION,
+        severe_period: cte::SEVERE_PERIOD_DISTRIBUTION,
+        critical_period: cte::CRITICAL_PERIOD_DISTRIBUTION,
+        prob_severe: cte::PROB_SEVERE_DISTRIBUTION,
+        prob_critical: cte::PROB_CRITICAL_DISTRIBUTION,
+    };
+    return EpiParamsCached::new(base);
+}

@@ -1,8 +1,62 @@
-use super::{
-    bind::{Bind, BindRef},
-    MultiComponent,
+use std::rc::Rc;
+
+use crate::{
+    prelude::{Age, Real},
+    sim::HasAge,
 };
-use crate::prelude::Real;
+
+use super::ParamSet;
+
+////////////////////////////////////////////////////////////////////////////////
+// TRAIT DECLARATIONS
+////////////////////////////////////////////////////////////////////////////////
+
+/// A trait that provide descriptions of basic epidemiological parameters independently
+/// from any agent state.
+pub trait EpiParams {
+    fn incubation_period(&self) -> Real;
+    fn infectious_period(&self) -> Real;
+    fn severe_period(&self) -> Real;
+    fn critical_period(&self) -> Real;
+    fn asymptomatic_infectiousness(&self) -> Real;
+    fn prob_asymptomatic(&self) -> Real;
+    fn prob_severe(&self) -> Real;
+    fn prob_critical(&self) -> Real;
+    fn prob_protect(&self) -> Real;
+    fn case_fatality_ratio(&self) -> Real;
+
+    fn prob_death(&self) -> Real {
+        let factor = self.prob_critical() * self.prob_severe();
+        return self.case_fatality_ratio() / factor;
+    }
+
+    fn infection_fatality_ratio(&self) -> Real {
+        self.case_fatality_ratio() * (1.0 - self.prob_asymptomatic())
+    }
+
+    fn incubation_transition_prob(&self) -> Real {
+        self.daily_probability(self.incubation_period())
+    }
+
+    fn infectious_transition_prob(&self) -> Real {
+        self.daily_probability(self.infectious_period())
+    }
+
+    fn severe_transition_prob(&self) -> Real {
+        self.daily_probability(self.severe_period())
+    }
+
+    fn critical_transition_prob(&self) -> Real {
+        self.daily_probability(self.severe_period())
+    }
+
+    /// A helper method that computes the daily transition probability from the
+    /// transition period.
+    #[inline]
+    fn daily_probability(&self, value: Real) -> Real {
+        daily_probability(value)
+    }
+}
 
 /// A set of epidemiological parameters that may depend on some state. If no such
 /// dependency exists, the trait can thought as EpiParams<()> and
@@ -23,7 +77,7 @@ use crate::prelude::Real;
 ///
 /// State must be feed as an additional argument to the getter functions of
 /// this trait.
-pub trait EpiParamsT<S> {
+pub trait PartialEpiParams<S> {
     /// Incubation period is the average duration in the "Exposed" category.
     /// In this stage, agents are infected but *CANNOT* yet infect other agents.
     fn incubation_period(&self, obj: &S) -> Real;
@@ -51,14 +105,14 @@ pub trait EpiParamsT<S> {
     /// Make it equal to 1.0 to coincide with SEIR;
     fn asymptomatic_infectiousness(&self, _obj: &S) -> Real;
 
-    /// Probability of an exposed agent not developing any symptoms (E to A).
+    /// Probability that an exposed agent does not develop any symptoms (E to A).
     ///
     /// The complement is the probability for transitioning from E to I.
     ///
-    /// A value of 0.0 makes it coincide with SEIR;
+    /// A value of 0.0 makes SEAIR coincide with SEIR;
     fn prob_asymptomatic(&self, _obj: &S) -> Real;
 
-    /// Probability of an infectious agent develop severe symptoms (I to H).
+    /// Probability that an infectious agent develops severe symptoms (I to H).
     ///
     /// The complement is the probability for transitioning from I to R.
     ///
@@ -66,7 +120,7 @@ pub trait EpiParamsT<S> {
     /// A value of 0.0 imposes a transition to R, with zero chance of deaths.
     fn prob_severe(&self, _obj: &S) -> Real;
 
-    /// Probability of a severe agent develop critical symptoms (S to C).
+    /// Probability that a severe agent develops critical symptoms (S to C).
     ///
     /// The complement is the probability for transitioning from S to R.
     ///
@@ -85,6 +139,7 @@ pub trait EpiParamsT<S> {
     }
 
     /// Probability of death for (symptomatic) cases.
+    ///
     /// Defaults to zero.
     fn case_fatality_ratio(&self, _obj: &S) -> Real;
 
@@ -123,72 +178,142 @@ pub trait EpiParamsT<S> {
     fn daily_probability(&self, value: Real) -> Real {
         daily_probability(value)
     }
-
-    /// Creates a bound SimpleSEIRParams object bound to the given state.
-    ///
-    /// It binds to a reference to self, which is more efficient, but may
-    /// create problems with lifetimes.
-    fn bind<'a>(&'a self, bind: S) -> BindRef<'a, Self, S>
-    where
-        Self: Sized,
-        S: Clone,
-    {
-        BindRef::new(self, bind)
-    }
-
-    /// Creates a bound SimpleSEIRParams object bound to the given state.
-    ///
-    fn bind_copy(&self, obj: &S) -> Bind<Self, S>
-    where
-        Self: Clone,
-        S: Clone,
-    {
-        Bind::new(self.clone(), obj.clone())
-    }
-
-    /// Creates a bound SimpleSEIRParams object bound to the given state.
-    ///
-    /// It binds to a reference to self, which is more efficient, but may
-    /// create problems with lifetimes.
-    fn with_bounded_params<R>(&self, bind: S, f: impl FnOnce(&BindRef<'_, Self, S>) -> R) -> R
-    where
-        Self: Sized,
-    {
-        // let ptr: *mut S = obj;
-        let params = BindRef::new(self, bind);
-        f(&params)
-        // // Safety: object cannot be moved
-        // unsafe {
-        //     f(&params, &mut *ptr);
-        // }
-        // drop(obj);
-    }
-}
-
-/// A trait for objects tha expose the internal data representation T of the
-/// EpiLocalParams param set.
-///
-/// This is useful in conversions between parameters but is not very useful
-/// to end users.
-pub trait EpiParamsData<T> {
-    fn with_incubation_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S;
-    fn with_infectious_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S;
-    fn with_severe_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S;
-    fn with_critical_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S;
-
-    /// Helper method that may make it easier to implement with_*_data() methods
-    /// for missing values.]
-    fn with_scalar_data<R, S>(&self, scalar: R, f: impl FnOnce(&T) -> S) -> S
-    where
-        T: MultiComponent<Elem = R>,
-    {
-        let data = T::from_component(scalar);
-        f(&data)
-    }
 }
 
 /// Computes the daily transition probability from the transition period.
 #[inline(always)]
 pub(crate) fn daily_probability(value: Real) -> Real {
     1.0 - (-1. / value).exp()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CONCRETE TYPES AND IMPLEMENTATIONS
+////////////////////////////////////////////////////////////////////////////////
+
+/// A simple struct that implements a
+pub struct PartialEpiParamsClosure<P, B>
+where
+    P: PartialEpiParams<B>,
+{
+    pub params: P,
+    pub bind: B,
+}
+
+impl<P, B> PartialEpiParamsClosure<P, B>
+where
+    P: PartialEpiParams<B>,
+{
+    /// Create a new closure bind.
+    pub fn new(params: P, bind: B) -> Self {
+        return PartialEpiParamsClosure { params, bind };
+    }
+}
+
+macro_rules! closure_method {
+    ($name:ident) => {
+        fn $name(&self) -> Real {
+            return self.params.$name(&self.bind);
+        }
+    };
+}
+
+impl<S, P> EpiParams for PartialEpiParamsClosure<P, S>
+where
+    P: PartialEpiParams<S>,
+{
+    closure_method!(incubation_period);
+    closure_method!(infectious_period);
+    closure_method!(severe_period);
+    closure_method!(critical_period);
+    closure_method!(asymptomatic_infectiousness);
+    closure_method!(prob_asymptomatic);
+    closure_method!(prob_severe);
+    closure_method!(prob_protect);
+    closure_method!(prob_critical);
+    closure_method!(prob_death);
+    closure_method!(case_fatality_ratio);
+    closure_method!(infection_fatality_ratio);
+    closure_method!(incubation_transition_prob);
+    closure_method!(infectious_transition_prob);
+    closure_method!(severe_transition_prob);
+    closure_method!(critical_transition_prob);
+}
+
+impl<ST: HasAge, P: PartialEpiParams<Age>> ParamSet<ST> for Rc<P> {
+    type BoundParams = PartialEpiParamsClosure<Self, Age>;
+
+    fn bind(&self, st: &ST) -> Self::BoundParams {
+        PartialEpiParamsClosure {
+            params: self.clone(),
+            bind: st.age(),
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Trait implementations
+////////////////////////////////////////////////////////////////////////////////
+
+// TRAIT IMPLEMENTATIONS FOR BOXED TYPES ///////////////////////////////////////
+
+macro_rules! delegate_to_ref {
+    ($name:ident, bind=$ty:ident) => {
+        fn $name(&self, obj: &$ty) -> Real {
+            return self.as_ref().$name(obj);
+        }
+    };
+    ($name:ident) => {
+        fn $name(&self) -> Real {
+            return self.as_ref().$name();
+        }
+    };
+}
+
+impl<T: EpiParams> EpiParams for Rc<T> {
+    delegate_to_ref!(incubation_period);
+    delegate_to_ref!(infectious_period);
+    delegate_to_ref!(severe_period);
+    delegate_to_ref!(critical_period);
+    delegate_to_ref!(asymptomatic_infectiousness);
+    delegate_to_ref!(prob_asymptomatic);
+    delegate_to_ref!(prob_severe);
+    delegate_to_ref!(prob_critical);
+    delegate_to_ref!(prob_protect);
+    delegate_to_ref!(case_fatality_ratio);
+}
+
+impl<T: EpiParams> EpiParams for Box<T> {
+    delegate_to_ref!(incubation_period);
+    delegate_to_ref!(infectious_period);
+    delegate_to_ref!(severe_period);
+    delegate_to_ref!(critical_period);
+    delegate_to_ref!(asymptomatic_infectiousness);
+    delegate_to_ref!(prob_asymptomatic);
+    delegate_to_ref!(prob_severe);
+    delegate_to_ref!(prob_critical);
+    delegate_to_ref!(prob_protect);
+    delegate_to_ref!(case_fatality_ratio);
+}
+
+impl<S, T> PartialEpiParams<S> for Rc<T>
+where
+    T: PartialEpiParams<S>,
+{
+    delegate_to_ref!(incubation_period, bind = S);
+    delegate_to_ref!(infectious_period, bind = S);
+    delegate_to_ref!(severe_period, bind = S);
+    delegate_to_ref!(critical_period, bind = S);
+    delegate_to_ref!(prob_protect, bind = S);
+    delegate_to_ref!(asymptomatic_infectiousness, bind = S);
+    delegate_to_ref!(prob_asymptomatic, bind = S);
+    delegate_to_ref!(prob_severe, bind = S);
+    delegate_to_ref!(prob_critical, bind = S);
+    delegate_to_ref!(prob_death, bind = S);
+    delegate_to_ref!(case_fatality_ratio, bind = S);
+    delegate_to_ref!(infection_fatality_ratio, bind = S);
+    delegate_to_ref!(incubation_transition_prob, bind = S);
+    delegate_to_ref!(infectious_transition_prob, bind = S);
+    delegate_to_ref!(severe_transition_prob, bind = S);
+    delegate_to_ref!(critical_transition_prob, bind = S);
 }
