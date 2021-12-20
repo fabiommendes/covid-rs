@@ -23,7 +23,10 @@ pub use vaccines::*;
 use crate::prelude::{AgeDistribution10, AgeParam, Real};
 use constants as cte;
 
-pub trait ParamSet<ST> {
+pub trait ParamSet<ST>
+where
+    Self: Clone,
+{
     type BoundParams: EpiParams;
     // type GlobalParams: EpiParams;
 

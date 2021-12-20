@@ -18,7 +18,7 @@ use std::fmt::Debug;
 
 /// Simulation state
 #[derive(Debug, Clone)]
-pub struct State<P, ST> {
+pub struct State<P: Clone, ST: Clone> {
     pub time: Time,
     pub population: Vec<ST>,
     pub params: P,
@@ -71,8 +71,8 @@ where
 
 /// Simulation stores a population of agents and some objects responsible for
 /// controlling the dynamics of those Agents.
-#[derive(Getters, MutGetters)]
-pub struct Simulation<ST, P, SP> {
+#[derive(Getters, MutGetters, Clone)]
+pub struct Simulation<ST: Clone, P: Clone, SP: Clone> {
     state: State<P, ST>,
 
     // #[getset(get = "pub", get_mut = "pub")]
@@ -84,7 +84,7 @@ pub struct Simulation<ST, P, SP> {
     epicurves: Option<Table<usize>>,
 }
 
-impl<'a, ST, P, SP> Simulation<ST, P, SP>
+impl<'a, ST: Clone, P: Clone, SP: Clone> Simulation<ST, P, SP>
 where
     P: ParamSet<ST>,
     P::BoundParams: EpiParams,
@@ -120,22 +120,6 @@ where
     /// Return the current simulation time
     pub fn time(&self) -> Time {
         return self.state.time;
-    }
-
-    /// Return a copy of simulation.
-    pub fn copy(&self) -> Self
-    where
-        P: Clone,
-        SP: Clone,
-    {
-        Simulation {
-            state: self.state.clone(),
-            // params: self.params.clone(),
-            sampler: self.sampler.clone(),
-            epicurves: self.epicurves.clone(),
-            scheduler: self.scheduler.clone(),
-            dispatcher: EventDispatcher::new_with_default_listeners(),
-        }
     }
 
     /** Builder API for simulation configuration *****************************/
@@ -389,10 +373,7 @@ where
     */
 
     /// Work with mutable references to the internal population, parameters and RNG.
-    pub fn with_parts<R>(
-        &mut self,
-        f: impl FnOnce(&mut Vec<ST>, &mut P, &mut SmallRng) -> R,
-    ) -> R {
+    pub fn with_parts<R>(&mut self, f: impl FnOnce(&mut Vec<ST>, &mut P, &mut SmallRng) -> R) -> R {
         return f(
             &mut self.state.population,
             &mut self.state.params,

@@ -1,6 +1,7 @@
 use super::{EpidemicSimulationMsg, Msg};
 use crate::sim::Id;
 use crate::{prelude::Real, utils::Sampler};
+use dyn_clone::DynClone;
 use getset::{CopyGetters, Getters, Setters};
 use std::{
     fmt::Debug,
@@ -13,7 +14,7 @@ use std::{
 /// simulation object).
 ///
 /// Event handlers are useful to collect statistics, and generate reports.
-pub trait EventHandler<E>
+pub trait EventHandler<E>: DynClone
 where
     E: Msg,
 {
@@ -208,3 +209,4 @@ impl EventHandler<EpidemicSimulationMsg> for Throttle {
         return EpidemicSimulationMsg::END_STEP_ID;
     }
 }
+

@@ -15,6 +15,18 @@ where
     listeners: Vec<Vec<Box<dyn EventHandler<E>>>>,
 }
 
+impl<E: Msg> Clone for EventDispatcher<E> {
+    fn clone(&self) -> Self {
+        EventDispatcher {
+            listeners: self
+                .listeners
+                .iter()
+                .map(|lst| lst.iter().map(|e| dyn_clone::clone_box(&**e)).collect())
+                .collect(),
+        }
+    }
+}
+
 impl<E> EventDispatcher<E>
 where
     E: Msg,
