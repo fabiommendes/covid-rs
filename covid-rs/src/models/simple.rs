@@ -26,6 +26,11 @@ pub struct SimpleAgent<M, V> {
 }
 
 impl<M, V: Clone> SimpleAgent<M, V> {
+    /// Return true if agent is vaccinated
+    pub fn is_vaccinated(&self) -> bool {
+        self.vaccine.is_some()
+    }
+    
     /// Vaccinate agent with vaccine
     pub fn vaccinate(&mut self, vaccine: &V) {
         self.vaccine = Some(vaccine.clone());

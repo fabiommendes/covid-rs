@@ -1,43 +1,110 @@
-use crate::prelude::Time;
-use std::{collections::VecDeque};
+use rand::prelude::SliceRandom;
 
-type Task<Ctx> = Box<dyn FnMut(&mut Ctx)>;
+use crate::{
+    models::{SimpleAgent},
+    params::ParamSet,
+    prelude::{Age, EpiModel, EpiModelPopulationExt, Time},
+    sim::{HasAge, HasEpiModel, Population, SimulationState},
+};
+use std::collections::VecDeque;
 
-/// Enumeration of possible scheduling strategies
-#[derive(Debug, Clone)]
-pub enum Program {
-    /// Execute task in the next invocation of before_step() or after_step()
-    Now,
-
-    /// Execute task in the beginning of the next step. Usually during the
-    /// before_step() call.
-    NextStep,
-
-    /// Execute task every turn in the beginning each step.
-    BeforeEveryStep,
-
-    /// Execute task every turn in the end each step.
-    AfterEveryStep,
- 
-    /// BeforeEvery(m, n) executes task in the beginning of every m steps
-    /// with an initial delay of n turns.
-    BeforeEvery(Time, Time),
-
-    /// Similar to BeforeEvery(m, n), but executes in the end of the step.
-    AfterEvery(Time, Time),
-
-    /// Execute once after the given period in turns. An period of zero
-    /// schedule task for the next step. Of one, waits one step and excutes
-    /// in the next and so one.
-    BeforeDelay(Time),
-
-    /// Similar to BeforeInterval, but executes in the start of each step.
-    AfterDelay(Time),
+///////////////////////////////////////////////////////////////////////////////
+// TASKS
+///////////////////////////////////////////////////////////////////////////////
+pub trait Task<Ctx> {
+    fn run(&mut self, ctx: &mut Ctx);
 }
 
-/// A simple turn-based scheduler that run tasks at specific discrete points in time.
+impl<Ctx, T: Task<Ctx>> Task<Ctx> for Box<T> {
+    fn run(&mut self, ctx: &mut Ctx) {
+        self.as_mut().run(ctx)
+    }
+}
+
+impl<Ctx> Task<Ctx> for fn(&mut Ctx) {
+    fn run(&mut self, ctx: &mut Ctx) {
+        self(ctx)
+    }
+}
+
+pub type AnyTask<Ctx> = Box<dyn Task<Ctx> + Send + Sync>;
+
+/** SCHEDULED INFECTIONS */
+pub struct InfectionPlan {
+    plan: Vec<usize>,
+}
+
+impl InfectionPlan {
+    pub fn new() -> Self {
+        InfectionPlan { plan: vec![] }
+    }
+}
+
+impl<P, ST> Task<SimulationState<P, ST>> for InfectionPlan
+where
+    P: ParamSet<ST>,
+    ST: HasEpiModel + Clone + Default,
+    <<ST as HasEpiModel>::Model as EpiModel>::Clinical: Default,
+{
+    fn run(&mut self, ctx: &mut SimulationState<P, ST>) {
+        if let Some(n) = self.plan.pop() {
+            ctx.population.contaminate_at_random(n, true, &mut ctx.rng);
+        }
+    }
+}
+
+/** SCHEDULED VACCINATIONS */
+
+pub struct VaccinationPlan<V> {
+    plan: Vec<(Age, Age, Vec<(V, usize)>)>,
+}
+
+impl<V> VaccinationPlan<V> {
+    pub fn new() -> Self {
+        VaccinationPlan { plan: vec![] }
+    }
+}
+
+impl<P, M, V> Task<SimulationState<P, SimpleAgent<M, V>>> for VaccinationPlan<V>
+where
+    M: EpiModel + HasAge,
+    V: Clone,
+    P: ParamSet<SimpleAgent<M, V>>,
+{
+    fn run(&mut self, ctx: &mut SimulationState<P, SimpleAgent<M, V>>) {
+        if let Some((start, end, groups)) = self.plan.pop() {
+            let mut target_pop = vec![];
+
+            for (id, ag) in ctx.population.iter().enumerate() {
+                let age = ag.age();
+                if age >= start && age <= end && ag.is_vaccinated() {
+                    target_pop.push(id);
+                }
+            }
+            target_pop.shuffle(&mut ctx.rng);
+
+            for (vac, n) in groups {
+                for _ in 1..n {
+                    if let Some(id) = target_pop.pop() {
+                        ctx.population
+                            .get_agent_mut(id)
+                            .map(|ag| ag.vaccinate(&vac));
+                    } else {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// SCHEDULER AND AUXILIARY TYPES
+///////////////////////////////////////////////////////////////////////////////
+
+/// A simple turn-based scheduler that runs tasks at specific discrete points in time.
 pub struct Scheduler<Ctx> {
-    immediate: Vec<Task<Ctx>>,
+    immediate: Vec<AnyTask<Ctx>>,
     before: SimpleScheduler<Ctx>,
     after: SimpleScheduler<Ctx>,
 }
@@ -53,8 +120,9 @@ impl<Ctx> Scheduler<Ctx> {
     }
 
     fn _run_pending(&mut self, ctx: &mut Ctx) {
-        for task in &mut self.immediate {
-            task(ctx);
+        for b in &mut self.immediate {
+            let task = b.as_mut();
+            task.run(ctx);
         }
         self.immediate.clear();
     }
@@ -104,7 +172,7 @@ impl<Ctx> Scheduler<Ctx> {
     }
 
     /// Schedule task to run in the time frame specified by the given program.
-    pub fn schedule_task(&mut self, when: Program, task: Task<Ctx>) {
+    pub fn schedule_task(&mut self, when: Program, task: AnyTask<Ctx>) {
         match when {
             Program::Now => self.immediate.push(task),
             Program::NextStep => self.before.schedule_once(task),
@@ -118,7 +186,10 @@ impl<Ctx> Scheduler<Ctx> {
     }
 
     /// Schedule task to run in the time frame specified by the given program.
-    pub fn schedule_function(&mut self, when: Program, f: impl FnMut(&mut Ctx) + 'static) {
+    pub fn schedule_function(&mut self, when: Program, f: fn(&mut Ctx))
+    where
+        Ctx: 'static,
+    {
         self.schedule_task(when, Box::new(f));
     }
 }
@@ -138,6 +209,38 @@ impl<Ctx> Clone for Scheduler<Ctx> {
     }
 }
 
+/// Enumeration of possible scheduling strategies
+#[derive(Debug, Clone)]
+pub enum Program {
+    /// Execute task in the next invocation of before_step() or after_step()
+    Now,
+
+    /// Execute task in the beginning of the next step. Usually during the
+    /// before_step() call.
+    NextStep,
+
+    /// Execute task every turn in the beginning each step.
+    BeforeEveryStep,
+
+    /// Execute task every turn in the end each step.
+    AfterEveryStep,
+
+    /// BeforeEvery(m, n) executes task in the beginning of every m steps
+    /// with an initial delay of n turns.
+    BeforeEvery(Time, Time),
+
+    /// Similar to BeforeEvery(m, n), but executes in the end of the step.
+    AfterEvery(Time, Time),
+
+    /// Execute once after the given period in turns. An period of zero
+    /// schedule task for the next step. Of one, waits one step and excutes
+    /// in the next and so one.
+    BeforeDelay(Time),
+
+    /// Similar to BeforeInterval, but executes in the start of each step.
+    AfterDelay(Time),
+}
+
 /** SIMPLE SCHEDULER *********************************************************/
 
 /// An internal struct used to reuse code for the main scheduler.
@@ -147,9 +250,9 @@ impl<Ctx> Clone for Scheduler<Ctx> {
 // #[derive(Clone)]
 struct SimpleScheduler<Ctx> {
     time: Time,
-    once: Vec<Task<Ctx>>,
-    always: Vec<Task<Ctx>>,
-    schedule: VecDeque<(Time, Time, Task<Ctx>)>,
+    once: Vec<AnyTask<Ctx>>,
+    always: Vec<AnyTask<Ctx>>,
+    schedule: VecDeque<(Time, Time, AnyTask<Ctx>)>,
 }
 
 impl<Ctx> SimpleScheduler<Ctx> {
@@ -165,7 +268,7 @@ impl<Ctx> SimpleScheduler<Ctx> {
     /// Add task to scheduler.
     ///
     /// Scheduler always keeps tasks sorted by execution time.
-    pub fn schedule(&mut self, delay: Time, period: Time, task: Task<Ctx>) {
+    pub fn schedule(&mut self, delay: Time, period: Time, task: AnyTask<Ctx>) {
         let mut index = 0;
         let deadline = self.time + delay;
         for (i, (target, _, _)) in self.schedule.iter().enumerate() {
@@ -178,12 +281,12 @@ impl<Ctx> SimpleScheduler<Ctx> {
     }
 
     /// Add task to execute once.
-    pub fn schedule_once(&mut self, task: Task<Ctx>) {
+    pub fn schedule_once(&mut self, task: AnyTask<Ctx>) {
         self.once.push(task);
     }
 
     /// Add task to execute always.
-    pub fn schedule_always(&mut self, task: Task<Ctx>) {
+    pub fn schedule_always(&mut self, task: AnyTask<Ctx>) {
         self.always.push(task);
     }
 
@@ -191,7 +294,7 @@ impl<Ctx> SimpleScheduler<Ctx> {
     pub fn step(&mut self, ctx: &mut Ctx) {
         // Run once
         for task in &mut self.once {
-            task(ctx);
+            task.as_mut().run(ctx);
         }
         self.once.clear();
 
@@ -201,7 +304,7 @@ impl<Ctx> SimpleScheduler<Ctx> {
             if let Some((deadline, _, _)) = self.schedule.get(0) {
                 if *deadline <= time {
                     let (deadline, period, mut task) = self.schedule.pop_front().unwrap();
-                    task(ctx);
+                    task.as_mut().run(ctx);
 
                     if period > 0 {
                         self.schedule(deadline + period - time, period, task);
@@ -216,7 +319,7 @@ impl<Ctx> SimpleScheduler<Ctx> {
 
         // Run always
         for task in &mut self.always {
-            task(ctx);
+            task.as_mut().run(ctx);
         }
 
         self.time += 1;
@@ -252,11 +355,15 @@ impl<Ctx> Clone for SimpleScheduler<Ctx> {
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// AUXILIARY FUNCTIONS
+///////////////////////////////////////////////////////////////////////////////
+
 fn identity<T>(x: T) -> T {
     return x;
 }
 
-fn try_clone<Ctx>(_task: &Task<Ctx>) -> Option<Task<Ctx>> {
+fn try_clone<Ctx>(_task: &AnyTask<Ctx>) -> Option<AnyTask<Ctx>> {
     // if let Some(f) = <dyn Any>::downcast_ref::<fn(&mut Ctx)>(task) {
     //     return Some(Box::new(f))
     // }

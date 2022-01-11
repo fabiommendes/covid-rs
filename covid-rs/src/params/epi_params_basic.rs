@@ -124,16 +124,16 @@ impl<T> EpiParamsData<T> {
         }
     }
 
-    pub fn with_incubation_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn with_incubation_period_data<S>(&self, _func: impl FnOnce(&T) -> S) -> S {
         todo!()
     }
-    pub fn with_infectious_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn with_infectious_period_data<S>(&self, _func: impl FnOnce(&T) -> S) -> S {
         todo!()
     }
-    pub fn with_severe_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn with_severe_period_data<S>(&self, _func: impl FnOnce(&T) -> S) -> S {
         todo!()
     }
-    pub fn with_critical_period_data<S>(&self, f: impl FnOnce(&T) -> S) -> S {
+    pub fn with_critical_period_data<S>(&self, _func: impl FnOnce(&T) -> S) -> S {
         todo!()
     }
 

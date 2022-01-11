@@ -17,17 +17,8 @@ pub trait Population {
         Self::State: Clone,
         I: Iterator<Item = &'a Self::State>;
 
-    /// Creates population from a sequence of states for each individual.
-    fn from_slice(states: &[Self::State]) -> Self
-    where
-        Self: Sized,
-        Self::State: Clone,
-    {
-        return Self::from_states(states.iter());
-    }
-
     /// Creates population with n copies of the given state.
-    fn from_state(n: usize, state: Self::State) -> Self
+    fn from_clones(n: usize, state: Self::State) -> Self
     where
         Self: Sized,
         Self::State: Clone,
@@ -41,7 +32,7 @@ pub trait Population {
         Self: Sized,
         Self::State: Default + Clone,
     {
-        return Population::from_state(n, Self::State::default());
+        return Population::from_clones(n, Self::State::default());
     }
 
     /** Conversions and information ******************************************/

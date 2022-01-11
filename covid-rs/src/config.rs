@@ -5,7 +5,7 @@ use std::path::Path;
 // use crate::params::{BindVaccine, EpiParamsBindVaccine, EpiParamsCached, VaccineParams};
 use crate::{
     models::{SimpleAgent, SimpleAgentPopulationExt, SEICHAR},
-    params::{EpiParamsData},
+    params::EpiParamsData,
     prelude::*,
     sim::{HasAge, Population, Simulation},
     utils::default_rng,
@@ -33,12 +33,25 @@ pub struct Epicurve {
 
 /// Enumeration that describes the vaccination strategy used to initialize population.
 #[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(tag = "type")]
 pub enum VaccinePlan {
     NoVaccine,
-    ByChance(Real),
-    ByMinAge(Real, Age),
-    ByMaxAge(Real, Age),
-    ByAgeRange(Real, Age, Age),
+    ByChance {
+        prob: Real,
+    },
+    ByMinAge {
+        prob: Real,
+        min_age: Age,
+    },
+    ByMaxAge {
+        prob: Real,
+        max_age: Age,
+    },
+    ByAgeRange {
+        prob: Real,
+        min_age: Age,
+        max_age: Age,
+    },
 }
 
 impl Default for VaccinePlan {
@@ -58,18 +71,22 @@ impl VaccinePlan {
             VaccinePlan::NoVaccine => {
                 return;
             }
-            &VaccinePlan::ByChance(prob) => {
+            &VaccinePlan::ByChance { prob } => {
                 pop.vaccinate_random(vaccine, prob, rng);
             }
-            &VaccinePlan::ByMinAge(prob, age) => {
-                pop.vaccinate_random_if(vaccine, prob, rng, |ag| ag.age() >= age);
+            &VaccinePlan::ByMinAge { prob, min_age } => {
+                pop.vaccinate_random_if(vaccine, prob, rng, |ag| ag.age() >= min_age);
             }
-            &VaccinePlan::ByMaxAge(prob, age) => {
-                pop.vaccinate_random_if(vaccine, prob, rng, |ag| ag.age() <= age);
+            &VaccinePlan::ByMaxAge { prob, max_age } => {
+                pop.vaccinate_random_if(vaccine, prob, rng, |ag| ag.age() <= max_age);
             }
-            &VaccinePlan::ByAgeRange(prob, min, max) => {
+            &VaccinePlan::ByAgeRange {
+                prob,
+                min_age,
+                max_age,
+            } => {
                 pop.vaccinate_random_if(vaccine, prob, rng, |ag| {
-                    ag.age() >= min && ag.age() <= max
+                    ag.age() >= min_age && ag.age() <= max_age
                 });
             }
         }
@@ -83,7 +100,7 @@ impl VaccinePlan {
 #[serde(default)]
 pub struct Config {
     // Generic options
-    #[getset(get = "pub")]
+    #[getset(get = "pub", set = "pub")]
     name: String,
 
     #[getset(get_copy = "pub")]
@@ -174,6 +191,7 @@ impl Config {
         if self.write_outputs {
             let path = self.output_folder_name();
             let conf_data = toml::to_string(self)?;
+            println!("{}, {}", path, conf_data);
 
             fs::create_dir(&path)?;
             return self.write_ouptut("conf.toml", &conf_data);

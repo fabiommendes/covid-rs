@@ -14,18 +14,19 @@ use rand::{
     prelude::{SeedableRng, SmallRng},
     Rng,
 };
-use std::fmt::Debug;
+use rayon::prelude::*;
+use std::{fmt::Debug};
 
 /// Simulation state
 #[derive(Debug, Clone)]
-pub struct State<P: Clone, ST: Clone> {
+pub struct SimulationState<P: Clone, ST: Clone> {
     pub time: Time,
     pub population: Vec<ST>,
     pub params: P,
     pub rng: SmallRng,
 }
 
-impl<P, ST> State<P, ST>
+impl<P, ST> SimulationState<P, ST>
 where
     P: ParamSet<ST>,
     ST: RandomUpdate<P::BoundParams> + EpiModel + Clone,
@@ -73,14 +74,14 @@ where
 /// controlling the dynamics of those Agents.
 #[derive(Getters, MutGetters, Clone)]
 pub struct Simulation<ST: Clone, P: Clone, SP: Clone> {
-    state: State<P, ST>,
+    state: SimulationState<P, ST>,
 
     // #[getset(get = "pub", get_mut = "pub")]
     // params: P,
     #[getset(get = "pub", get_mut = "pub")]
     sampler: SP,
     dispatcher: EventDispatcher<EpidemicSimulationMsg>,
-    scheduler: Scheduler<State<P, ST>>,
+    scheduler: Scheduler<SimulationState<P, ST>>,
     epicurves: Option<Table<usize>>,
 }
 
@@ -95,7 +96,7 @@ where
     pub fn new(params: P, population: Vec<ST>, sampler: SP) -> Self {
         Simulation {
             epicurves: Some(Table::new(ST::column_names())),
-            state: State {
+            state: SimulationState {
                 population,
                 time: 0,
                 params: params,
@@ -241,21 +242,27 @@ where
     /// useful to use in builder-like APIs.
     #[inline]
     pub fn run(&'a mut self, n_steps: usize) -> &'a mut Self {
-        self.steps(n_steps);
+        for _ in 0..n_steps {
+            self.step();
+        }
         return self;
     }
 
-    /** Run simulation *******************************************************/
-
-    /// Run simulation for the given number of steps and return the number of
-    /// new cases.
-    pub fn steps(&'a mut self, n_steps: usize) -> usize {
-        let mut cases = 0;
-        for _ in 0..n_steps {
-            cases += self.step();
-        }
-        return cases;
+    /// Create n copies of simulation and run them for n_steps in parallel.
+    pub fn run_parallel(&self, n: usize, n_steps: usize) -> Vec<Self>
+    where
+        P: Send + Sync,
+        SP: Send + Sync,
+        ST: Send + Sync,
+    {
+        let mut result = self.copies(n);
+        result.par_iter_mut().for_each(|sim| {
+            sim.run(n_steps);
+        });
+        return result;
     }
+
+    /** Run simulation *******************************************************/
 
     /// Run a single simulation step;
     pub fn step(&mut self) -> usize {
@@ -294,6 +301,19 @@ where
             sample.push(ag.clone());
         }
         return sample;
+    }
+
+    /// Create n copies of self.
+    ///
+    /// RNG is initialized from entropy in each copy.
+    pub fn copies(&self, n: usize) -> Vec<Self> {
+        return (1..n)
+            .map(|_| {
+                let mut new = self.clone();
+                new.seed_from(&mut SmallRng::from_entropy());
+                new
+            })
+            .collect();
     }
 
     /// Population size
@@ -382,12 +402,12 @@ where
     }
 
     /// Work with a mutable reference to the internal RNG, parameters and population.
-    pub fn with_state_mut<R>(&mut self, f: impl FnOnce(&mut State<P, ST>) -> R) -> R {
+    pub fn with_state_mut<R>(&mut self, f: impl FnOnce(&mut SimulationState<P, ST>) -> R) -> R {
         return f(&mut self.state);
     }
 
     /// Work with a mutable reference to the internal RNG, parameters and population.
-    pub fn with_state<R>(&self, f: impl FnOnce(&State<P, ST>) -> R) -> R {
+    pub fn with_state<R>(&self, f: impl FnOnce(&SimulationState<P, ST>) -> R) -> R {
         return f(&self.state);
     }
 }

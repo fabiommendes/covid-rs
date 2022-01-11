@@ -87,7 +87,7 @@ pub trait EpiModel: Sized + Clone {
     /// Return true if one agent can contaminate the other. This must return true
     /// if contagion is, in principle, possible. Further external restrictions
     /// (like, e.g., physical distance) may make the infection impossible, but
-    /// this should be treated later in the pipeline.
+    /// those should be treated elsewhere in the pipeline.
     fn can_contaminate(&self, other: &Self) -> bool {
         self.is_contagious() && other.is_susceptible()
     }

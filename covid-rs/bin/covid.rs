@@ -114,8 +114,9 @@ fn main() -> Fallible<()> {
         Config::default()
     };
 
-    update_configuration(&matches, &mut config, config_path)?;
+    update_configuration(&matches, &mut config, config_path, has_config)?;
     config.create_output_folder()?;
+    println!("foo");
 
     // Initialize according to params
     let mut sim = config.seichar_simulation();
@@ -132,11 +133,18 @@ fn update_configuration(
     matches: &ArgMatches,
     config: &mut Config,
     config_path: &str,
+    has_config: bool,
 ) -> Fallible<()> {
     // name
-    let name = matches.value_of("name").unwrap_or_else(|| config.name());
-    log::debug!("name: {}", name);
-    config.update_name_from_path(config_path);
+    let name = matches.value_of("name");
+    if let Some(name) = name {
+        config.set_name(name.to_string());
+    } else if has_config {
+        config.update_name_from_path(config_path);
+    } else {
+        config.set_name("sim".to_string());
+    }
+    log::debug!("name: {:?}", config.name());
 
     // write_outputs
     config.set_write_outputs(!matches.is_present("dry_run"));
@@ -182,29 +190,33 @@ fn update_configuration(
 
         if let Some(age_range) = matches.value_of("vaccine_age") {
             if age_range.ends_with("+") {
-                let age: Age = age_range
+                let min_age: Age = age_range
                     .strip_suffix("+")
                     .unwrap()
                     .parse()
                     .map_err(|_| "Age must be an integer")?;
-                config.set_vaccine_plan(VaccinePlan::ByMinAge(prob, age));
+                config.set_vaccine_plan(VaccinePlan::ByMinAge { prob, min_age });
             } else if age_range.ends_with("-") {
-                let age: Age = age_range
+                let max_age: Age = age_range
                     .strip_suffix("-")
                     .unwrap()
                     .parse()
                     .map_err(|_| "Age must be an integer")?;
-                config.set_vaccine_plan(VaccinePlan::ByMaxAge(prob, age));
+                config.set_vaccine_plan(VaccinePlan::ByMaxAge { prob, max_age });
             } else if let Some((astr, bstr)) = age_range.split_once('-') {
-                let a: Age = astr.parse()?;
-                let b: Age = bstr.parse()?;
-                config.set_vaccine_plan(VaccinePlan::ByAgeRange(prob, a, b));
+                let min_age: Age = astr.parse()?;
+                let max_age: Age = bstr.parse()?;
+                config.set_vaccine_plan(VaccinePlan::ByAgeRange {
+                    prob,
+                    min_age,
+                    max_age,
+                });
             } else {
                 println!("invalid range for 'vaccine_age': {}", age_range);
                 panic!();
             }
         } else {
-            config.set_vaccine_plan(VaccinePlan::ByChance(prob));
+            config.set_vaccine_plan(VaccinePlan::ByChance { prob });
         }
     }
 

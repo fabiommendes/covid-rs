@@ -8,11 +8,13 @@ use crate::{
 };
 use std::any::Any;
 
+pub type AnyEventHandler<E> = Box<dyn EventHandler<E> + Send + Sync>;
+
 pub struct EventDispatcher<E>
 where
     E: Msg,
 {
-    listeners: Vec<Vec<Box<dyn EventHandler<E>>>>,
+    listeners: Vec<Vec<AnyEventHandler<E>>>,
 }
 
 impl<E: Msg> Clone for EventDispatcher<E> {
@@ -48,7 +50,7 @@ where
     }
 
     /// Register event handler
-    pub fn register(&mut self, handler: Box<dyn EventHandler<E>>) {
+    pub fn register(&mut self, handler: AnyEventHandler<E>) {
         let id = handler.handle_id();
         self.listeners[id].push(handler);
     }

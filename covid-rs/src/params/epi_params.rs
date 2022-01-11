@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use crate::{
     prelude::{Age, Real},
@@ -250,7 +250,6 @@ impl<ST: HasAge, P: PartialEpiParams<Age>> ParamSet<ST> for Rc<P> {
     }
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 // Trait implementations
 ////////////////////////////////////////////////////////////////////////////////
@@ -283,6 +282,19 @@ impl<T: EpiParams> EpiParams for Rc<T> {
     delegate_to_ref!(case_fatality_ratio);
 }
 
+impl<T: EpiParams> EpiParams for Arc<T> {
+    delegate_to_ref!(incubation_period);
+    delegate_to_ref!(infectious_period);
+    delegate_to_ref!(severe_period);
+    delegate_to_ref!(critical_period);
+    delegate_to_ref!(asymptomatic_infectiousness);
+    delegate_to_ref!(prob_asymptomatic);
+    delegate_to_ref!(prob_severe);
+    delegate_to_ref!(prob_critical);
+    delegate_to_ref!(prob_protect);
+    delegate_to_ref!(case_fatality_ratio);
+}
+
 impl<T: EpiParams> EpiParams for Box<T> {
     delegate_to_ref!(incubation_period);
     delegate_to_ref!(infectious_period);
@@ -297,6 +309,28 @@ impl<T: EpiParams> EpiParams for Box<T> {
 }
 
 impl<S, T> PartialEpiParams<S> for Rc<T>
+where
+    T: PartialEpiParams<S>,
+{
+    delegate_to_ref!(incubation_period, bind = S);
+    delegate_to_ref!(infectious_period, bind = S);
+    delegate_to_ref!(severe_period, bind = S);
+    delegate_to_ref!(critical_period, bind = S);
+    delegate_to_ref!(prob_protect, bind = S);
+    delegate_to_ref!(asymptomatic_infectiousness, bind = S);
+    delegate_to_ref!(prob_asymptomatic, bind = S);
+    delegate_to_ref!(prob_severe, bind = S);
+    delegate_to_ref!(prob_critical, bind = S);
+    delegate_to_ref!(prob_death, bind = S);
+    delegate_to_ref!(case_fatality_ratio, bind = S);
+    delegate_to_ref!(infection_fatality_ratio, bind = S);
+    delegate_to_ref!(incubation_transition_prob, bind = S);
+    delegate_to_ref!(infectious_transition_prob, bind = S);
+    delegate_to_ref!(severe_transition_prob, bind = S);
+    delegate_to_ref!(critical_transition_prob, bind = S);
+}
+
+impl<S, T> PartialEpiParams<S> for Arc<T>
 where
     T: PartialEpiParams<S>,
 {
