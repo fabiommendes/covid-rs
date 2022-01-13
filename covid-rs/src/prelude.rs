@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-// pub use crate::agent::Ag;
 pub use crate::epidemic::*;
-// pub use crate::pop_builder::PopBuilder;
-// pub use crate::simulation::Simulation;
-// pub use crate::reporter::{Report};
+pub use crate::simulation::Simulation;
+pub use crate::engine::Engine;
 pub use crate::sampler::{
     AnySampler, ContactMatrixSampler, PopulationSampler, Sampler, SimpleSampler,
 };

@@ -1,10 +1,10 @@
 use rand::prelude::SliceRandom;
 
 use crate::{
-    models::{SimpleAgent},
+    models::SimpleAgent,
     params::ParamSet,
-    prelude::{Age, EpiModel, EpiModelPopulationExt, Time},
-    sim::{HasAge, HasEpiModel, Population, SimulationState},
+    prelude::{Age, EpiModel, EpiModelPopulationExt, Simulation, Time},
+    sim::{HasAge, HasEpiModel, Population},
 };
 use std::collections::VecDeque;
 
@@ -40,13 +40,13 @@ impl InfectionPlan {
     }
 }
 
-impl<P, ST> Task<SimulationState<P, ST>> for InfectionPlan
+impl<P, ST> Task<Simulation<P, ST>> for InfectionPlan
 where
     P: ParamSet<ST>,
     ST: HasEpiModel + Clone + Default,
     <<ST as HasEpiModel>::Model as EpiModel>::Clinical: Default,
 {
-    fn run(&mut self, ctx: &mut SimulationState<P, ST>) {
+    fn run(&mut self, ctx: &mut Simulation<P, ST>) {
         if let Some(n) = self.plan.pop() {
             ctx.population.contaminate_at_random(n, true, &mut ctx.rng);
         }
@@ -65,13 +65,13 @@ impl<V> VaccinationPlan<V> {
     }
 }
 
-impl<P, M, V> Task<SimulationState<P, SimpleAgent<M, V>>> for VaccinationPlan<V>
+impl<P, M, V> Task<Simulation<P, SimpleAgent<M, V>>> for VaccinationPlan<V>
 where
     M: EpiModel + HasAge,
     V: Clone,
     P: ParamSet<SimpleAgent<M, V>>,
 {
-    fn run(&mut self, ctx: &mut SimulationState<P, SimpleAgent<M, V>>) {
+    fn run(&mut self, ctx: &mut Simulation<P, SimpleAgent<M, V>>) {
         if let Some((start, end, groups)) = self.plan.pop() {
             let mut target_pop = vec![];
 

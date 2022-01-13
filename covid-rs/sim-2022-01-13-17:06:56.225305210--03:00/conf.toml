@@ -1,0 +1,25 @@
+name = "sim"
+verbose = true
+timestamp = "2022-01-13T17:06:56.225305210-03:00"
+write_outputs = true
+pop_size = 10000
+age_distribution = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+initial_infections = 10
+n_contacts = 4.5
+prob_infection = 0.1
+max_iter = 200
+
+[params]
+incubation_period = 0.0
+infectious_period = 0.0
+asymptomatic_infectiousness = 0.0
+prob_asymptomatic = 0.0
+case_fatality_ratio = 0.0
+severe_period = 0.0
+critical_period = 0.0
+prob_severe = 0.0
+prob_critical = 0.0
+
+[vaccine_plan]
+type = "ByChance"
+prob = 1.0

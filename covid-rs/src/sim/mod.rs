@@ -1,8 +1,6 @@
 mod population;
-mod simulation;
 mod state;
 pub use population::*;
-pub use simulation::*;
 pub use state::*;
 
 /// Type alias describing agent handles.

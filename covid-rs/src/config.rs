@@ -7,7 +7,7 @@ use crate::{
     models::{SimpleAgent, SimpleAgentPopulationExt, SEICHAR},
     params::EpiParamsData,
     prelude::*,
-    sim::{HasAge, Population, Simulation},
+    sim::{HasAge, Population},
     utils::default_rng,
 };
 use chrono::{DateTime, Local};
@@ -23,7 +23,7 @@ type Params = EpiParamsData<Real>;
 pub type SeicharAgent = SimpleAgent<SEICHAR<()>, ()>;
 pub type WorldParams = EpiParamsData<Real>; //BindVaccine<EpiParamsCached<EpiParamsFull<AgeParam>, AgeParam>>;
 pub type Sampler = SimpleSampler;
-pub type SeicharSimulation = Simulation<SeicharAgent, WorldParams, Sampler>;
+pub type SeicharSimulation = Engine<SeicharAgent, WorldParams, Sampler>;
 
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 #[serde(default)]
@@ -283,7 +283,7 @@ impl Config {
         // let params: EpiParamsMin<Real> = self.params.unwrap_or_default().cached().into();
         // let params: EpiParamsMin<Real> = self.params.unwrap_or_default().into();
         let params: EpiParamsData<Real> = EpiParamsData::default_from_scalars();
-        let mut sim: Simulation<_, _, _> = Simulation::new(params, population, sampler);
+        let mut sim: Engine<_, _, _> = Engine::new(params, population, sampler);
         println!("{:?}", params);
 
         if let Some(seed) = &self.seed {
