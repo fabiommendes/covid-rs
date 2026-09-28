@@ -358,7 +358,7 @@ where
     }
 
     /// Work with a mutable reference to the internal RNG, parameters and population.
-    pub fn with_state<R>(&self, f: impl FnOnce(&Simulation<P, ST>) -> R) -> R {
+    pub fn with_simulation<R>(&self, f: impl FnOnce(&Simulation<P, ST>) -> R) -> R {
         return f(&self.simulation);
     }
 }

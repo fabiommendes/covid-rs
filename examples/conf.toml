@@ -1,0 +1,48 @@
+# Tamanho da população
+pop_size = 100_000
+
+# Número inicial de infeciosos (valor absoluto)
+# initial_infections = 500
+
+# Probabilidade de infecção por contato
+prob_infection = 0.25
+
+# Número médio de contatos que cada agente realiza por dia
+n_contacts = 2.5
+
+# Número de dias de simulação
+num_iter = 30
+
+# Deixe false para silenciar mensagens durante a execução da simulação
+verbose = false
+
+# Distribuição da população a cada 10 anos. Pode ser em números relativos ou
+# absolutos. Começa na faixa 0-9 e segue a cada dez anos até 80+.
+pop_distrib = [2000, 2000, 2500, 2500, 2000, 1500, 1000, 750, 400]
+pop_counts = [20_000, 20_000, 25_000, 25_000, 20_000, 15_000, 10_000, 7_500, 2_500]
+
+[epicurve]
+data = [
+    2, 2, 2, 3, 4, 4, 5, 7, 8, 10, 12, 14, 17, 21, 25, 30, 36, 44, 53, 63,
+    69, 76, 83, 92, 101, 111, 122, 135, 148, 163, 179, 197, 217, 239,
+    250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 
+    250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250,
+    300, 375, 450, 600, 800, 1000, 1250, 1000, 800, 600, 450, 375, 300,
+    250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 
+    250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250,
+]
+
+# Define os parâmetros da simulação
+[params.epidemic]
+# incubation_period = 3.5
+# infectious_period = 4.5
+# asymptomatic_infectiousness = 0.4
+# prob_asymptomatic = 0.42
+# case_fatality_ratio = 0.015
+
+[params.clinical]
+# severe_period = 7.0
+# critical_period = 7.0
+# prob_severe = 0.18
+# prob_critical = 0.22
+# prob_death = 0.42
